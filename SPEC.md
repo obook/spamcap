@@ -79,6 +79,7 @@ Chaque anomalie porte une sévérité (`minor` ou `major`).
 | `punycode_domain` | mineure | Domaine expéditeur internationalisé (punycode), vecteur d'homographe. |
 | `dmarc_misalignment` | mineure | DKIM valide pour un domaine autre que l'expéditeur, sans DMARC pour le contrôler. |
 | `replyto_mismatch` | mineure | Adresse de réponse sur un autre domaine que l'expéditeur. |
+| `recent_domain` | mineure | Domaine expéditeur créé il y a moins de 30 jours (RDAP). |
 
 La vérification MX (`mx_mismatch`) est désactivée par défaut dans l'API : elle
 génère beaucoup de faux positifs, car les serveurs sortants diffèrent souvent
@@ -144,9 +145,23 @@ la liste s'étend en ajoutant une fonction de détection :
 - **SpamAssassin** : `X-Spam-Flag`, `X-Spam-Status`, `X-Spam-Score`. Le courriel
   est indésirable quand `X-Spam-Flag` vaut `YES` (ou que le statut commence par
   `Yes`).
+- **Proxad / Free** : `X-ProXaD-SC` (format `state=HAM|SPAM:catégorie score=N`).
+  Le courriel est indésirable quand l'état vaut `SPAM`.
 
 Quand le filtre classe le message comme indésirable, une anomalie mineure
 `filter_spam` est levée, ce qui place le verdict au minimum en `SUSPECT`.
+
+## Courriel de masse et expéditeur d'enveloppe
+
+Les en-têtes `List-Id` et `List-Unsubscribe` signalent une infolettre ou une
+liste de diffusion ; la plateforme d'envoi (ESP) est lue dans `X-Mailer` ou dans
+le suffixe de `Feedback-ID`. La carte affiche alors le type "courriel de masse",
+l'ESP et le lien de désabonnement. Sur un courriel de masse, l'anomalie
+`replyto_mismatch` est ignorée : une infolettre utilise légitimement une adresse
+de réponse d'un autre domaine.
+
+L'en-tête `Return-Path` (expéditeur d'enveloppe, adresse de rebond) est aussi
+extrait et affiché dans la carte.
 
 ## Portée du verdict et hameçonnage
 
@@ -154,6 +169,15 @@ SpamCap analyse l'acheminement, pas le contenu. Un courriel d'hameçonnage peut
 être techniquement authentifié (SPF, DKIM et DMARC qui passent pour un domaine
 d'attaquant correctement configuré), tandis que le piège réel se trouve dans le
 corps, que SpamCap ne lit pas.
+
+La carte affiche aussi la date de création et de mise à jour du domaine
+expéditeur, obtenues par RDAP (`rdap.org`) et mises en cache par requête : un
+domaine créé très récemment est un indice classique d'hameçonnage.
+
+Si le courriel porte un en-tête `X-Originating-IP` (ou `X-Sender-IP`,
+`X-Source-IP`, `X-Client-IP`), souvent présent sur un envoi par webmail ou par
+script, SpamCap affiche l'IP du poste expéditeur : géolocalisée si elle est
+publique, étiquetée réseau intranet si elle est privée.
 
 Le verdict n'affirme donc jamais qu'un courriel est sûr. L'interface affiche un
 avertissement permanent sous le verdict : SpamCap vérifie l'acheminement, pas le

@@ -7,6 +7,18 @@ Collez l'en-tête brut d'un courriel reçu et SpamCap reconstitue son parcours,
 serveur par serveur, puis signale les incohérences et les usurpations lisibles
 dans les en-têtes. L'analyse porte sur l'acheminement, jamais sur le contenu.
 
+## Aperçu
+
+![Saisie et carte d'identité du courriel](media/screen1.png)
+
+*Saisie de l'en-tête et carte d'identité : expéditeur, âge du domaine, origine
+probable et avertissement permanent.*
+
+![Parcours du courriel](media/screen2.png)
+
+*Le parcours, de l'expéditeur (FROM) aux serveurs traversés jusqu'au
+destinataire (TO).*
+
 ## Fonctionnalités
 
 - Parcours en timeline verticale, de l'expéditeur aux serveurs jusqu'au
