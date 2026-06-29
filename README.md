@@ -66,21 +66,23 @@ uv sync
 Le script `launch.sh` enveloppe le serveur dans les deux modes :
 
 ```bash
-./launch.sh          # développement, rechargement auto, 127.0.0.1:8000
-./launch.sh prod     # production, 0.0.0.0:8000
+./launch.sh          # développement, rechargement auto, 127.0.0.1:8001
+./launch.sh prod     # production, 0.0.0.0:8001
 ```
 
-`HOST` et `PORT` surchargent les valeurs par défaut, par exemple
-`PORT=9000 ./launch.sh`.
+Une fois le serveur prêt, le script ouvre la page dans le navigateur ; si le
+port est occupé, il bascule sur le port libre suivant. `HOST` et `PORT`
+surchargent les valeurs par défaut (`PORT=9000 ./launch.sh`), et `NO_BROWSER=1`
+empêche l'ouverture du navigateur.
 
 Les commandes directes équivalentes sont :
 
 ```bash
 uv run uvicorn backend.main:app --reload
-uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn backend.main:app --host 0.0.0.0 --port 8001
 ```
 
-L'application est alors accessible sur http://127.0.0.1:8000.
+L'application est alors accessible sur http://127.0.0.1:8001.
 
 En production, derrière Nginx en proxy inverse devant Uvicorn. Les détails de
 déploiement sont documentés dans `SPEC.md`.
@@ -102,12 +104,26 @@ ville.
 ## Organisation du projet
 
 ```
-backend/    Service FastAPI : analyse, résolution, détection, modèles
-frontend/   Interface monopage (HTML, CSS, JavaScript vanilla)
-scripts/    Téléchargement de la base GeoIP
-data/        Base GeoLite2 (non versionnée)
-SPEC.md      Spécification fonctionnelle et critères de détection
+backend/
+  parser/      Analyse des en-têtes (modèles, relais, filtres, en-têtes)
+  detector/    Détection de falsification (identité et parcours)
+  resolver/    Résolution réseau : PTR, GeoIP, WHOIS, DNSBL, RDAP
+  analysis.py  Orchestration : assemble parser, resolver et detector
+  emailutil.py Aide partagée sur les adresses de courriel
+  models.py    Modèles Pydantic de l'API
+  main.py      Application FastAPI (routes /analyze et /health)
+frontend/
+  *.js         Interface en modules ES (dom, format, rendu, point d'entrée)
+  css/         Feuilles de style par section et polices auto-hébergées
+  vendor/      Polices woff2 auto-hébergées (aucun appel à un CDN)
+scripts/       Téléchargement de la base GeoIP
+data/          Base GeoLite2 (non versionnée)
+SPEC.md        Spécification fonctionnelle et critères de détection
 ```
+
+Chaque paquet expose une surface plate : `parser`, `detector` et `resolver`
+s'importent comme avant. `parser` et `detector` sont purs (aucun accès
+réseau) ; `resolver` concentre toute la partie réseau.
 
 ## Licence
 
