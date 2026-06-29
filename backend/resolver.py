@@ -28,6 +28,7 @@ import dns.resolver
 import dns.reversename
 import geoip2.database
 import geoip2.errors
+import requests
 from ipwhois import IPWhois
 from ipwhois.exceptions import BaseIpwhoisException
 
@@ -95,6 +96,7 @@ class Resolver:
         self.dns_timeout = dns_timeout
         self.geoip_warning: str | None = None
         self._whois_cache: dict[str, str | None] = {}
+        self._domain_cache: dict[str, tuple[str | None, str | None]] = {}
         self._geoip_reader = self._open_geoip(geoip_path)
 
         self._dns = dns.resolver.Resolver()
@@ -266,3 +268,45 @@ class Resolver:
         except Exception:
             # Délai, SERVFAIL, famille non prise en charge : inconnu, jamais une erreur.
             return None
+
+    def domain_dates(self, domain: str) -> tuple[str | None, str | None]:
+        """Renvoie (date de création, date de mise à jour) du domaine via RDAP.
+
+        Un domaine récemment créé est un indice d'hameçonnage. Renvoie
+        (None, None) en cas d'échec ou de TLD sans RDAP. Le résultat est mis en
+        cache par instance.
+        """
+
+        if not domain:
+            return None, None
+        if domain in self._domain_cache:
+            return self._domain_cache[domain]
+        dates = self._lookup_domain_dates(domain)
+        self._domain_cache[domain] = dates
+        return dates
+
+    def _lookup_domain_dates(self, domain: str) -> tuple[str | None, str | None]:
+        try:
+            response = requests.get(
+                f"https://rdap.org/domain/{domain}",
+                headers={"Accept": "application/rdap+json"},
+                timeout=self.dns_timeout,
+            )
+        except requests.RequestException:
+            return None, None
+        if response.status_code != 200:
+            return None, None
+        try:
+            events = response.json().get("events", [])
+        except ValueError:
+            return None, None
+
+        created = None
+        updated = None
+        for event in events:
+            action = event.get("eventAction")
+            if action == "registration":
+                created = event.get("eventDate")
+            elif action == "last changed":
+                updated = event.get("eventDate")
+        return created, updated

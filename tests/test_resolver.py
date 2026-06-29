@@ -153,6 +153,37 @@ def test_forward_lookup(resolver: Resolver, monkeypatch) -> None:
     assert resolver.forward_lookup("proxad.net") is None
 
 
+def test_domain_dates(resolver: Resolver, monkeypatch) -> None:
+    import backend.resolver as resolver_module
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "events": [
+                    {"eventAction": "registration", "eventDate": "2001-05-01T22:00:00Z"},
+                    {"eventAction": "last changed", "eventDate": "2026-03-31T22:15:03Z"},
+                    {"eventAction": "expiration", "eventDate": "2027-05-01T22:00:00Z"},
+                ]
+            }
+
+    monkeypatch.setattr(
+        resolver_module.requests, "get", lambda url, headers, timeout: FakeResponse()
+    )
+    created, updated = resolver.domain_dates("exemple.fr")
+
+    assert created == "2001-05-01T22:00:00Z"
+    assert updated == "2026-03-31T22:15:03Z"
+    # Deuxième appel servi par le cache, sans nouvelle requête.
+    monkeypatch.setattr(
+        resolver_module.requests,
+        "get",
+        lambda url, headers, timeout: (_ for _ in ()).throw(AssertionError("non caché")),
+    )
+    assert resolver.domain_dates("exemple.fr") == (created, updated)
+
+
 def test_missing_geoip_database_sets_warning() -> None:
     resolver = Resolver(geoip_path=Path("/nonexistent/GeoLite2-City.mmdb"))
 
