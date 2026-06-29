@@ -133,14 +133,31 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
     resolved_hops: list[ResolvedIP] = []
     previous_timestamp = None
 
+    no_dnsbl: dict[str, bool | None] = {"spamcop": None, "spamhaus": None}
+
     for hop in parsed.hops:
+        resolved_ip = None
+        ptr = None
+        has_reverse = None
+        dnsbl = no_dnsbl
+
         if hop.from_ip:
             resolved = resolver.resolve(hop.from_ip)
             dnsbl = resolver.dnsbl_check(hop.from_ip)
+            ptr = resolved.ptr
+            has_reverse = resolved.has_reverse
+            # Le detecteur ne voit que la resolution de l'IP d'origine.
+            resolved_hops.append(resolved)
         else:
-            resolved = ResolvedIP(ip=hop.from_ip or "", ip_version=0)
-            dnsbl = {"spamcop": None, "spamhaus": None}
-        resolved_hops.append(resolved)
+            # Aucune IP dans l'en-tete : le detecteur ne dispose de rien.
+            resolved_hops.append(ResolvedIP(ip="", ip_version=0))
+            resolved = ResolvedIP(ip="", ip_version=0)
+            # On geolocalise le nom d'hote via DNS direct, a titre indicatif.
+            if hop.from_host:
+                derived = resolver.forward_lookup(hop.from_host)
+                if derived:
+                    resolved = resolver.resolve(derived)
+                    resolved_ip = derived
 
         delay = None
         if hop.timestamp is not None and previous_timestamp is not None:
@@ -152,15 +169,18 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
             HopInfo(
                 hop_index=hop.index,
                 ip=hop.from_ip,
+                from_host=hop.from_host,
+                resolved_ip=resolved_ip,
                 ip_version=resolved.ip_version,
-                ptr=resolved.ptr,
+                ptr=ptr,
+                has_reverse=has_reverse,
                 country=resolved.country,
                 country_code=resolved.country_code,
                 city=resolved.city,
                 org=resolved.org,
                 timestamp=hop.timestamp,
                 delay_seconds=delay,
-                is_private=resolved.is_private,
+                is_private=resolved.is_private if hop.from_ip else False,
                 dnsbl=dnsbl,
             )
         )
@@ -189,7 +209,11 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
         verdict=detection.verdict,
         from_domain=_domain_of(parsed.from_header),
         to_domain=_domain_of(parsed.to_header),
+        from_address=parsed.from_header,
+        to_recipients=parsed.to_header,
+        cc_recipients=parsed.cc_header,
         subject=parsed.subject,
+        date=parsed.date_header,
         message_id=parsed.message_id,
         truncated=parsed.truncated,
         raw_size_bytes=parsed.raw_size_bytes,

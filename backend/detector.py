@@ -43,6 +43,11 @@ SEVERITY_MAJOR = "major"
 # Un appelable qui renvoie l'ensemble des IP servant de MX pour un domaine.
 MxResolver = Callable[[str], set[str]]
 
+# Reconnait un domaine niché dans un texte (nom affiché), via une adresse ou un
+# domaine nu.
+_EMAIL_IN_TEXT_RE = re.compile(r"[\w.+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
+_DOMAIN_IN_TEXT_RE = re.compile(r"\b([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b")
+
 
 @dataclass
 class AuthResult:
@@ -116,6 +121,10 @@ def detect(
 
     anomalies.extend(_check_auth(auth))
     anomalies.extend(_check_filter(parsed))
+    anomalies.extend(_check_display_name(parsed))
+    anomalies.extend(_check_lookalike_domain(parsed))
+    anomalies.extend(_check_dmarc_alignment(parsed, auth))
+    anomalies.extend(_check_reply_to(parsed))
     anomalies.extend(_check_timestamps(parsed))
     anomalies.extend(_check_private_injection(parsed))
     anomalies.extend(_check_from_relay(parsed, resolved))
@@ -275,6 +284,85 @@ def _check_first_hop_mx(
     return []
 
 
+def _check_display_name(parsed: ParsedEmail) -> list[Anomaly]:
+    """Signale un nom affiché qui évoque un domaine autre que l'adresse réelle."""
+
+    name, address = parseaddr(parsed.from_header or "")
+    from_domain = _domain_part(address)
+    if not name or not from_domain:
+        return []
+
+    claimed = _domain_in_text(name)
+    if claimed and _registrable(claimed) != _registrable(from_domain):
+        return [
+            Anomaly(
+                "display_name_spoof",
+                SEVERITY_MAJOR,
+                f"Le nom affiché évoque {claimed} alors que l'adresse réelle est {address}.",
+            )
+        ]
+    return []
+
+
+def _check_lookalike_domain(parsed: ParsedEmail) -> list[Anomaly]:
+    """Signale un domaine expéditeur internationalisé (punycode)."""
+
+    from_domain = _domain_of(parsed.from_header)
+    if not from_domain:
+        return []
+
+    if any(label.startswith("xn--") for label in from_domain.split(".")):
+        return [
+            Anomaly(
+                "punycode_domain",
+                SEVERITY_MINOR,
+                f"Le domaine expéditeur ({from_domain}) est internationalisé (punycode), "
+                "parfois utilisé pour imiter une marque.",
+            )
+        ]
+    return []
+
+
+def _check_dmarc_alignment(parsed: ParsedEmail, auth: AuthResult) -> list[Anomaly]:
+    """Signale une signature DKIM valide pour un domaine autre que l'expéditeur.
+
+    Quand DMARC passe, l'alignement est déjà garanti : on ne signale rien.
+    """
+
+    from_domain = _domain_of(parsed.from_header)
+    if not from_domain or auth.dmarc == "pass":
+        return []
+
+    signer = auth.dkim_domain
+    if auth.dkim == "pass" and signer and _registrable(signer) != _registrable(from_domain):
+        return [
+            Anomaly(
+                "dmarc_misalignment",
+                SEVERITY_MINOR,
+                f"Signature DKIM valide pour {signer}, différent du domaine affiché "
+                f"{from_domain}, sans DMARC pour le contrôler.",
+            )
+        ]
+    return []
+
+
+def _check_reply_to(parsed: ParsedEmail) -> list[Anomaly]:
+    """Signale une adresse de réponse sur un domaine autre que l'expéditeur."""
+
+    reply_domain = _domain_of(parsed.reply_to)
+    from_domain = _domain_of(parsed.from_header)
+    if reply_domain and from_domain and _registrable(reply_domain) != _registrable(from_domain):
+        return [
+            Anomaly(
+                "replyto_mismatch",
+                SEVERITY_MINOR,
+                f"Les réponses iraient vers {reply_domain}, différent de "
+                f"l'expéditeur {from_domain}.",
+            )
+        ]
+    return []
+
+
 def _verdict(anomalies: list[Anomaly]) -> str:
     if any(a.severity == SEVERITY_MAJOR for a in anomalies):
         return VERDICT_DOUBTFUL
@@ -295,6 +383,24 @@ def _domain_of(address_header: str | None) -> str | None:
     if "@" not in email_address:
         return None
     return email_address.rsplit("@", 1)[1].lower()
+
+
+def _domain_part(address: str) -> str | None:
+    if "@" not in address:
+        return None
+    return address.rsplit("@", 1)[1].lower()
+
+
+def _domain_in_text(text: str) -> str | None:
+    """Extrait un domaine d'un texte libre : adresse de courriel, sinon domaine nu."""
+
+    match = _EMAIL_IN_TEXT_RE.search(text)
+    if match:
+        return match.group(1).lower()
+    match = _DOMAIN_IN_TEXT_RE.search(text)
+    if match:
+        return match.group(1).lower()
+    return None
 
 
 def _registrable(host: str) -> str:

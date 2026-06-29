@@ -44,6 +44,9 @@ _BRACKETED_IP_RE = re.compile(r"\[(?:IPv6:)?([0-9A-Fa-f:.]+)\]")
 _IPV4_RE = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}")
 _IPV6_TOKEN_RE = re.compile(r"[0-9A-Fa-f:]{2,}")
 
+# Un nom d'hote : des labels alphanumériques séparés par des points.
+_HOST_RE = re.compile(r"(?<![\w.-])([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?![\w-])")
+
 
 @dataclass
 class RawHop:
@@ -58,6 +61,7 @@ class RawHop:
     by_ip: str | None
     timestamp: datetime | None
     raw: str
+    from_host: str | None = None
 
 
 # À partir de ce Spam Confidence Level, Microsoft considère le courriel comme
@@ -90,7 +94,10 @@ class ParsedEmail:
     hops: list[RawHop] = field(default_factory=list)
     from_header: str | None = None
     to_header: str | None = None
+    cc_header: str | None = None
+    reply_to: str | None = None
     subject: str | None = None
+    date_header: str | None = None
     message_id: str | None = None
     authentication_results: str | None = None
     received_spf: str | None = None
@@ -164,6 +171,7 @@ def parse_email(raw: str) -> ParsedEmail:
                 by_ip=_first_ip(by_clause),
                 timestamp=_parse_date(timestamp_text),
                 raw=_collapse(value),
+                from_host=_first_host(from_clause),
             )
         )
 
@@ -171,7 +179,10 @@ def parse_email(raw: str) -> ParsedEmail:
         hops=hops,
         from_header=_decode(message.get("From")),
         to_header=_decode(message.get("To")),
+        cc_header=_decode(message.get("Cc")),
+        reply_to=_decode(message.get("Reply-To")),
         subject=_decode(message.get("Subject")),
+        date_header=_decode(message.get("Date")),
         message_id=_decode(message.get("Message-ID")),
         authentication_results=_join(message.get_all("Authentication-Results")),
         received_spf=_join(message.get_all("Received-SPF")),
@@ -233,6 +244,23 @@ def _first_ip(text: str) -> str | None:
             if ip:
                 return ip
 
+    return None
+
+
+def _first_host(text: str) -> str | None:
+    """Extrait le premier nom d'hote d'une clause, en ignorant les IP.
+
+    Utile quand un saut n'a pas d'IP exploitable : le nom d'hote du serveur reste
+    une information de parcours (par exemple un relais interne Exchange).
+    """
+
+    if not text:
+        return None
+    for match in _HOST_RE.finditer(text):
+        host = match.group(1)
+        if _valid_ip(host):
+            continue
+        return host.rstrip(".").lower()
     return None
 
 

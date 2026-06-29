@@ -24,8 +24,11 @@ class HopInfo(BaseModel):
 
     hop_index: int
     ip: str | None
+    from_host: str | None
+    resolved_ip: str | None
     ip_version: int
     ptr: str | None
+    has_reverse: bool | None
     country: str | None
     country_code: str | None
     city: str | None
@@ -73,7 +76,11 @@ class AnalysisResult(BaseModel):
     verdict: str
     from_domain: str | None
     to_domain: str | None
+    from_address: str | None
+    to_recipients: str | None
+    cc_recipients: str | None
     subject: str | None
+    date: str | None
     message_id: str | None
     truncated: bool
     raw_size_bytes: int

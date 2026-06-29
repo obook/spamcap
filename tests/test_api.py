@@ -47,6 +47,9 @@ class FakeResolver:
     def dnsbl_check(self, ip: str) -> dict[str, bool | None]:
         return {"spamcop": False, "spamhaus": False}
 
+    def forward_lookup(self, host: str) -> str | None:
+        return None
+
     def close(self) -> None:
         pass
 
