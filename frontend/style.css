@@ -656,6 +656,10 @@ main {
   margin: 0;
 }
 
+.colophon p + p {
+  margin-top: 0.4rem;
+}
+
 /* ------------------------------------------------------------------ Responsive */
 
 @media (max-width: 36rem) {
