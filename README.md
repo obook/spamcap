@@ -1,29 +1,32 @@
 # SpamCap
 
-Analyseur d'en-têtes de courriel avec visualisation du parcours et détection de
-falsification.
+Analyseur d'en-têtes de courriel avec visualisation du parcours et détection
+d'usurpation.
 
 Collez l'en-tête brut d'un courriel reçu et SpamCap reconstitue son parcours,
-serveur par serveur, puis signale les usurpations et les échecs
-d'authentification.
+serveur par serveur, puis signale les incohérences et les usurpations lisibles
+dans les en-têtes. L'analyse porte sur l'acheminement, jamais sur le contenu.
 
 ## Fonctionnalités
 
-- Liste ordonnée des sauts, de l'expéditeur au destinataire, reconstruite à
-  partir des champs `Received:`.
-- Par saut : adresse IPv4/IPv6, DNS inverse (PTR), pays, organisation (ASN),
-  horodatage et délai entre sauts.
-- Vérification de réputation de chaque IP sur les listes noires DNS
-  (SpamCop SCBL, Spamhaus ZEN).
-- Détection de falsification : résultats SPF, DKIM et DMARC, cohérence des
-  horodatages, IP privées insérées entre des relais publics, écart entre
-  l'expéditeur et son MX.
-- Verdict de légitimité : LÉGITIME, SUSPECT ou DOUTEUX.
-- Visualisation en timeline verticale du parcours.
-- Raccourci pour signaler le message sur SpamCop.
+- Parcours en timeline verticale, de l'expéditeur aux serveurs jusqu'au
+  destinataire, reconstruit à partir des champs `Received:`.
+- Par saut : IP (v4 ou v6) ou nom d'hôte, DNS inverse (PTR) ou mention claire
+  d'absence de reverse, pays et ville, organisation (ASN), horodatage et délai.
+  Un saut sans IP est géolocalisé via le DNS actuel de son nom d'hôte.
+- Réputation de chaque IP sur les listes noires DNS (SpamCop SCBL, Spamhaus ZEN).
+- Authentification : résultats SPF, DKIM et DMARC.
+- Verdict du filtre de réception du fournisseur (Microsoft 365, SpamAssassin).
+- Détection d'incohérences et d'usurpation : horodatages incohérents, IP privée
+  insérée entre des relais publics, nom affiché trompeur, domaine sosie
+  (punycode), désalignement DMARC, adresse de réponse divergente.
+- Carte d'identité du courriel : expéditeur, destinataire(s), objet, date
+  d'expédition (heure de l'expéditeur) et origine probable.
+- Avertissement permanent : un courriel d'hameçonnage peut être techniquement
+  authentifié, car le contenu n'est pas analysé.
 
 Aucun courriel n'est conservé. Le traitement est sans état et s'exécute
-entièrement en mémoire.
+entièrement en mémoire ; le corps du courriel n'est jamais transmis au serveur.
 
 ## Prérequis
 
@@ -75,21 +78,26 @@ fournie avec le dépôt. Téléchargez `GeoLite2-City.mmdb` dans `data/` à l'ai
 d'un compte MaxMind gratuit et d'une clé de licence. Un script d'aide est fourni :
 
 ```bash
-scripts/download_geoip.sh
+MAXMIND_LICENSE_KEY="votre_cle" scripts/download_geoip.sh
 ```
 
-Sans ce fichier, SpamCap fonctionne quand même et renvoie `null` pour le pays et
-la ville.
+Le chemin de la base est surchargeable par la variable `SPAMCAP_GEOIP`. Sans
+cette base, SpamCap fonctionne quand même et renvoie `null` pour le pays et la
+ville.
 
 ## Organisation du projet
 
 ```
 backend/    Service FastAPI : analyse, résolution, détection, modèles
 frontend/   Interface monopage (HTML, CSS, JavaScript vanilla)
+scripts/    Téléchargement de la base GeoIP
 data/        Base GeoLite2 (non versionnée)
 SPEC.md      Spécification fonctionnelle et critères de détection
 ```
 
 ## Licence
 
-À définir.
+SpamCap est distribué sous Licence Ouverte 2.0 (Etalab). Voir le fichier
+`LICENSE`. Vous êtes libre de réutiliser, modifier et redistribuer le code, y
+compris à des fins commerciales, sous réserve de mentionner la paternité :
+auteur Olivier Booklage, et la date de dernière mise à jour.

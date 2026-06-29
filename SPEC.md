@@ -39,8 +39,10 @@ en-têtes comptent. La toute première opération du `parser` est donc :
 |---|---|---|
 | `hop_index` | parser | Rang du saut, 0 = serveur d'origine. |
 | `ip` | parser | IP source (clause `from`) du champ `Received:`. |
+| `from_host` | parser | Nom d'hote du serveur source, utile quand l'IP manque. |
 | `ip_version` | resolver | 4 ou 6 ; 0 si l'adresse est invalide. |
 | `ptr` | resolver | Nom DNS inverse (PTR). |
+| `has_reverse` | resolver | True si un PTR existe, False si son absence est confirmée, None si la résolution a échoué. |
 | `country`, `country_code`, `city` | resolver | Géolocalisation MaxMind. |
 | `org` | resolver | Organisation et ASN via WHOIS. |
 | `timestamp` | parser | Horodatage du champ `Received:`. |
@@ -73,6 +75,10 @@ Chaque anomalie porte une sévérité (`minor` ou `major`).
 | `private_ip_injected` | majeure | IP privée insérée entre deux relais publics. |
 | `from_relay_mismatch` | mineure | Domaine `From:` différent du PTR du premier relais. |
 | `mx_mismatch` | mineure | Premier relais absent des MX du domaine expéditeur. |
+| `display_name_spoof` | majeure | Le nom affiché évoque un domaine autre que l'adresse réelle. |
+| `punycode_domain` | mineure | Domaine expéditeur internationalisé (punycode), vecteur d'homographe. |
+| `dmarc_misalignment` | mineure | DKIM valide pour un domaine autre que l'expéditeur, sans DMARC pour le contrôler. |
+| `replyto_mismatch` | mineure | Adresse de réponse sur un autre domaine que l'expéditeur. |
 
 La vérification MX (`mx_mismatch`) est désactivée par défaut dans l'API : elle
 génère beaucoup de faux positifs, car les serveurs sortants diffèrent souvent
@@ -142,23 +148,20 @@ la liste s'étend en ajoutant une fonction de détection :
 Quand le filtre classe le message comme indésirable, une anomalie mineure
 `filter_spam` est levée, ce qui place le verdict au minimum en `SUSPECT`.
 
-## Intégration SpamCop
+## Portée du verdict et hameçonnage
 
-Le signalement sur SpamCop suit l'approche dite simple, toujours fiable :
+SpamCap analyse l'acheminement, pas le contenu. Un courriel d'hameçonnage peut
+être techniquement authentifié (SPF, DKIM et DMARC qui passent pour un domaine
+d'attaquant correctement configuré), tandis que le piège réel se trouve dans le
+corps, que SpamCap ne lit pas.
 
-1. L'interface affiche les en-têtes tronqués (50 Ko maximum, limite documentée
-   par SpamCop) dans un champ en lecture seule, avec un bouton de copie.
-2. Un bouton ouvre `https://www.spamcop.net/reporter.pl` dans un nouvel onglet.
-
-Une approche de pré-remplissage automatique du formulaire (POST
-`multipart/form-data` vers `reporter.pl`) a été envisagée mais n'est pas
-retenue : SpamCop impose une authentification par compte et utilise
-vraisemblablement des jetons CSRF, et un POST depuis le navigateur est bloqué
-par les politiques CORS. L'approche simple est donc la seule implémentée.
-
-Dans tous les cas, le signalement requiert un compte SpamCop gratuit et une
-validation manuelle sur leur site. Aucun identifiant SpamCop n'est manipulé par
-le service.
+Le verdict n'affirme donc jamais qu'un courriel est sûr. L'interface affiche un
+avertissement permanent sous le verdict : SpamCap vérifie l'acheminement, pas le
+contenu. Les détecteurs `display_name_spoof`, `punycode_domain`,
+`dmarc_misalignment` et `replyto_mismatch` capturent les indices d'usurpation
+lisibles dans les en-têtes, sans jamais ouvrir le corps. Un hameçonnage dont la
+charge est entièrement dans les liens du corps reste hors de portée d'une analyse
+d'en-têtes.
 
 ## Vie privée et journalisation
 
