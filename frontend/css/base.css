@@ -1,0 +1,50 @@
+/* SpamCap - identité "bureau de tri" : encre officielle, cachets, tampons.
+   Display : Bricolage Grotesque. Données et libellés : IBM Plex Mono. */
+
+:root {
+  --ink: #16233b;
+  --ink-2: #45506a;
+  --paper: #e4e6db;
+  --paper-raised: #edeee6;
+  --vermilion: #c8402e;
+  --teal: #0e6e62;
+  --amber: #9a6413;
+  --line: rgba(22, 35, 59, 0.18);
+  --line-strong: rgba(22, 35, 59, 0.42);
+
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --measure: 64rem;
+  --radius: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--ink);
+  background-color: var(--paper);
+  /* Trame discrète d'enveloppe de sécurité. */
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0,
+    transparent 7px,
+    rgba(22, 35, 59, 0.022) 7px,
+    rgba(22, 35, 59, 0.022) 8px
+  );
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  width: min(100% - 2.5rem, var(--measure));
+  margin: 0 auto;
+}

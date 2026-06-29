@@ -1,0 +1,39 @@
+/* Colophon : pied de page et ajustements pour petits écrans. */
+
+.colophon {
+  width: min(100% - 2.5rem, var(--measure));
+  margin: 3rem auto 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--ink);
+  font-size: 0.74rem;
+  color: var(--ink-2);
+}
+
+.colophon p {
+  margin: 0;
+}
+
+.colophon p + p {
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 36rem) {
+  .hop {
+    grid-template-columns: 52px 1fr;
+    gap: 0.8rem;
+  }
+
+  .hop__seal {
+    width: 52px;
+    height: 52px;
+  }
+
+  .hop:not(:last-child)::after {
+    left: 25px;
+    top: calc(0.9rem + 26px);
+  }
+
+  .hop:not(:first-child)::before {
+    left: 25px;
+  }
+}

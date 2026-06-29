@@ -1,0 +1,73 @@
+/* Report : cadre du compte-rendu, titres de section et carte d'identité. */
+
+.report {
+  margin: 2.5rem 0 1rem;
+}
+
+.block {
+  padding-top: 2rem;
+  margin-top: 2rem;
+  border-top: 1px solid var(--line);
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  font-size: 1rem;
+  margin: 0 0 1.2rem;
+}
+
+.section-title__eyebrow {
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
+.section-title__text {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+
+/* Carte d'identité du courriel. */
+.card {
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background-color: var(--paper-raised);
+  padding: 1.1rem 1.3rem;
+}
+
+.card__grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.45rem 1.2rem;
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.card__grid dt {
+  color: var(--ink-2);
+  text-transform: uppercase;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  padding-top: 0.2rem;
+  white-space: nowrap;
+}
+
+.card__grid dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.caveat {
+  margin: 1.25rem 0 0;
+  padding: 0.7rem 1rem;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background-color: var(--paper-raised);
+  border-left: 4px solid var(--amber);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}

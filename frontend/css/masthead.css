@@ -1,0 +1,72 @@
+/* Masthead : bandeau de titre du bureau. */
+
+.masthead {
+  width: min(100% - 2.5rem, var(--measure));
+  margin: 2.5rem auto 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 2px solid var(--ink);
+}
+
+.masthead__brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.seal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  flex: none;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  transform: rotate(-8deg);
+}
+
+.seal::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed var(--ink);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.seal__mark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+}
+
+.wordmark {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+}
+
+.masthead__role {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.masthead__tag {
+  max-width: 26rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-2);
+}

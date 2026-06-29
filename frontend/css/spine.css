@@ -1,0 +1,195 @@
+/* Spine : colonne du parcours, cachets de saut et badges. */
+
+.spine {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+/* Trait pointillé reliant chaque nœud au suivant ; le dernier n'en a pas,
+   donc plus de résidu sous le dernier nœud. */
+.hop:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 31px;
+  top: calc(0.9rem + 32px);
+  height: 100%;
+  border-left: 2px dotted var(--line-strong);
+}
+
+/* Flèche vers le bas à l'arrivée sur chaque nœud, sauf l'expéditeur (origine) :
+   elle marque le sens de l'acheminement. */
+.hop:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  left: 31px;
+  top: 0.4rem;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--line-strong);
+}
+
+.hop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 1.1rem;
+  padding: 0.9rem 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hop {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: hop-in 0.5s ease forwards;
+    animation-delay: calc(var(--i, 0) * 90ms);
+  }
+}
+
+@keyframes hop-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hop__seal {
+  position: relative;
+  z-index: 1;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background-color: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  transform: rotate(-4deg);
+}
+
+.hop__seal--listed {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
+/* Nœuds d'extrémité : même encre que les cachets ronds, seule la forme carrée
+   distingue les humains des serveurs. */
+.hop__seal--endpoint {
+  border-radius: 9px;
+  background-color: var(--paper);
+  transform: rotate(0deg);
+}
+
+.hop__endpoint-glyph {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.hop__index {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.hop__flag {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.hop__body {
+  min-width: 0;
+}
+
+.hop__ip {
+  font-size: 1.05rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.hop__ipver {
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  margin-left: 0.4rem;
+  vertical-align: 0.12em;
+}
+
+.hop__place {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  margin: 0.15rem 0 0;
+}
+
+.hop__lines {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+
+.hop__lines div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hop__lines dt {
+  flex: none;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  padding-top: 0.18rem;
+  min-width: 3.2rem;
+}
+
+.hop__lines dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.hop__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.badge {
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+
+.badge--listed {
+  color: var(--vermilion);
+  transform: rotate(-2deg);
+  font-weight: 600;
+}
+
+.badge--local {
+  color: var(--ink-2);
+}
+
+.badge--delay {
+  color: var(--ink-2);
+  border-style: dashed;
+  text-transform: none;
+}
+
+.spine__empty {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  font-style: italic;
+}
