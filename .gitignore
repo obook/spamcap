@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Environment
+.env
+
+# GeoIP database (downloaded separately, see scripts/download_geoip.sh)
+data/GeoLite2-City.mmdb
+*.mmdb
