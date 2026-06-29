@@ -77,6 +77,7 @@ class AnalysisResult(BaseModel):
     from_domain: str | None
     from_domain_created: str | None
     from_domain_updated: str | None
+    from_domain_registrar: str | None
     to_domain: str | None
     from_address: str | None
     to_recipients: str | None

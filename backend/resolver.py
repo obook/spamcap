@@ -96,7 +96,9 @@ class Resolver:
         self.dns_timeout = dns_timeout
         self.geoip_warning: str | None = None
         self._whois_cache: dict[str, str | None] = {}
-        self._domain_cache: dict[str, tuple[str | None, str | None]] = {}
+        self._domain_cache: dict[
+            str, tuple[str | None, str | None, str | None]
+        ] = {}
         self._geoip_reader = self._open_geoip(geoip_path)
 
         self._dns = dns.resolver.Resolver()
@@ -269,23 +271,28 @@ class Resolver:
             # Délai, SERVFAIL, famille non prise en charge : inconnu, jamais une erreur.
             return None
 
-    def domain_dates(self, domain: str) -> tuple[str | None, str | None]:
-        """Renvoie (date de création, date de mise à jour) du domaine via RDAP.
+    def domain_dates(
+        self, domain: str
+    ) -> tuple[str | None, str | None, str | None]:
+        """Renvoie (création, mise à jour, bureau d'enregistrement) via RDAP.
 
-        Un domaine récemment créé est un indice d'hameçonnage. Renvoie
-        (None, None) en cas d'échec ou de TLD sans RDAP. Le résultat est mis en
-        cache par instance.
+        Un domaine récemment créé est un indice d'hameçonnage ; le bureau
+        d'enregistrement (registrar) renseigne sur la provenance du domaine.
+        Renvoie (None, None, None) en cas d'échec ou de TLD sans RDAP. Le
+        résultat est mis en cache par instance.
         """
 
         if not domain:
-            return None, None
+            return None, None, None
         if domain in self._domain_cache:
             return self._domain_cache[domain]
-        dates = self._lookup_domain_dates(domain)
-        self._domain_cache[domain] = dates
-        return dates
+        info = self._lookup_domain_dates(domain)
+        self._domain_cache[domain] = info
+        return info
 
-    def _lookup_domain_dates(self, domain: str) -> tuple[str | None, str | None]:
+    def _lookup_domain_dates(
+        self, domain: str
+    ) -> tuple[str | None, str | None, str | None]:
         try:
             response = requests.get(
                 f"https://rdap.org/domain/{domain}",
@@ -293,20 +300,45 @@ class Resolver:
                 timeout=self.dns_timeout,
             )
         except requests.RequestException:
-            return None, None
+            return None, None, None
         if response.status_code != 200:
-            return None, None
+            return None, None, None
         try:
-            events = response.json().get("events", [])
+            payload = response.json()
         except ValueError:
-            return None, None
+            return None, None, None
 
         created = None
         updated = None
-        for event in events:
+        for event in payload.get("events", []):
             action = event.get("eventAction")
             if action == "registration":
                 created = event.get("eventDate")
             elif action == "last changed":
                 updated = event.get("eventDate")
-        return created, updated
+        registrar = self._extract_registrar(payload.get("entities", []))
+        return created, updated, registrar
+
+    @staticmethod
+    def _extract_registrar(entities: list) -> str | None:
+        """Extrait le nom du bureau d'enregistrement des entités RDAP.
+
+        L'entité de rôle "registrar" porte son nom dans son vCard (champ "fn").
+        Renvoie None si aucune entité de ce rôle n'expose de nom.
+        """
+
+        for entity in entities:
+            if "registrar" not in entity.get("roles", []):
+                continue
+            vcard = entity.get("vcardArray")
+            if not isinstance(vcard, list) or len(vcard) < 2:
+                continue
+            for field in vcard[1]:
+                if (
+                    isinstance(field, list)
+                    and len(field) >= 4
+                    and field[0] == "fn"
+                    and field[3]
+                ):
+                    return str(field[3])
+        return None

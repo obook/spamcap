@@ -131,6 +131,9 @@ function domainLabel(data) {
   if (data.from_domain_updated) {
     parts.push("mis à jour le " + formatDay(data.from_domain_updated));
   }
+  if (data.from_domain_registrar) {
+    parts.push("bureau d'enregistrement : " + data.from_domain_registrar);
+  }
   return parts.length ? domain + " (" + parts.join(", ") + ")" : domain;
 }
 

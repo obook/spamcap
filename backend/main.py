@@ -193,8 +193,8 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
         )
 
     from_domain = _domain_of(parsed.from_header)
-    domain_created, domain_updated = (
-        resolver.domain_dates(from_domain) if from_domain else (None, None)
+    domain_created, domain_updated, domain_registrar = (
+        resolver.domain_dates(from_domain) if from_domain else (None, None, None)
     )
 
     detection = detect(parsed, resolved=resolved_hops, domain_created=domain_created)
@@ -224,6 +224,7 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
         from_domain=from_domain,
         from_domain_created=domain_created,
         from_domain_updated=domain_updated,
+        from_domain_registrar=domain_registrar,
         to_domain=_domain_of(parsed.to_header),
         from_address=parsed.from_header,
         to_recipients=parsed.to_header,

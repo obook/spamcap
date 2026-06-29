@@ -165,23 +165,36 @@ def test_domain_dates(resolver: Resolver, monkeypatch) -> None:
                     {"eventAction": "registration", "eventDate": "2001-05-01T22:00:00Z"},
                     {"eventAction": "last changed", "eventDate": "2026-03-31T22:15:03Z"},
                     {"eventAction": "expiration", "eventDate": "2027-05-01T22:00:00Z"},
-                ]
+                ],
+                "entities": [
+                    {
+                        "roles": ["registrar"],
+                        "vcardArray": [
+                            "vcard",
+                            [
+                                ["version", {}, "text", "4.0"],
+                                ["fn", {}, "text", "OVH SAS"],
+                            ],
+                        ],
+                    }
+                ],
             }
 
     monkeypatch.setattr(
         resolver_module.requests, "get", lambda url, headers, timeout: FakeResponse()
     )
-    created, updated = resolver.domain_dates("exemple.fr")
+    created, updated, registrar = resolver.domain_dates("exemple.fr")
 
     assert created == "2001-05-01T22:00:00Z"
     assert updated == "2026-03-31T22:15:03Z"
+    assert registrar == "OVH SAS"
     # Deuxième appel servi par le cache, sans nouvelle requête.
     monkeypatch.setattr(
         resolver_module.requests,
         "get",
         lambda url, headers, timeout: (_ for _ in ()).throw(AssertionError("non caché")),
     )
-    assert resolver.domain_dates("exemple.fr") == (created, updated)
+    assert resolver.domain_dates("exemple.fr") == (created, updated, registrar)
 
 
 def test_missing_geoip_database_sets_warning() -> None:

@@ -50,8 +50,8 @@ class FakeResolver:
     def forward_lookup(self, host: str) -> str | None:
         return None
 
-    def domain_dates(self, domain: str) -> tuple[str | None, str | None]:
-        return None, None
+    def domain_dates(self, domain: str) -> tuple[str | None, str | None, str | None]:
+        return None, None, None
 
     def close(self) -> None:
         pass
