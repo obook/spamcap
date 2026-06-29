@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpamCap - Analyse d'en-tetes de courriel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="seal" aria-hidden="true"><span class="seal__mark">SC</span></span>
+      <span class="masthead__lines">
+        <span class="wordmark">SpamCap</span>
+        <span class="masthead__role">Bureau de tri des courriels</span>
+      </span>
+    </div>
+    <p class="masthead__tag">Tracez le parcours d'un courriel, saut par saut, et reperez les en-tetes falsifiees.</p>
+  </header>
+
+  <main>
+    <section class="deposit" aria-labelledby="deposit-title">
+      <h2 id="deposit-title" class="deposit__title">Deposez le pli</h2>
+      <form id="analyze-form" class="deposit__form" novalidate>
+        <label for="raw" class="deposit__label">Collez l'en-tete complet du courriel</label>
+        <textarea id="raw" class="deposit__field" rows="9" spellcheck="false"
+          placeholder="Received: from mail.expediteur.fr ([198.51.100.20])&#10;        by mx.destinataire.fr ...&#10;From: ...&#10;Subject: ..."></textarea>
+        <p class="deposit__hint">Vous pouvez coller le courriel entier : seuls les en-tetes sont analyses, le corps est ignore.</p>
+        <div class="deposit__actions">
+          <button type="submit" class="stamp-button" id="analyze-btn">Analyser</button>
+          <p class="deposit__error" id="form-error" role="alert" hidden></p>
+        </div>
+      </form>
+    </section>
+
+    <section class="report" id="report" hidden aria-live="polite">
+      <div class="verdict" id="verdict">
+        <div class="verdict__stamp" id="verdict-stamp">
+          <span class="verdict__word" id="verdict-word"></span>
+          <span class="verdict__label">verdict de legitimite</span>
+        </div>
+        <dl class="verdict__meta" id="verdict-meta"></dl>
+      </div>
+
+      <section class="block" aria-labelledby="route-title">
+        <h2 id="route-title" class="section-title">
+          <span class="section-title__eyebrow">Parcours</span>
+          <span class="section-title__text">du pli, de l'expediteur au destinataire</span>
+        </h2>
+        <ol class="spine" id="route-spine"></ol>
+        <p class="spine__empty" id="route-empty" hidden>Aucun saut reseau detecte. Courriel local ou en-tetes absentes.</p>
+      </section>
+
+      <section class="block" aria-labelledby="auth-title">
+        <h2 id="auth-title" class="section-title">
+          <span class="section-title__eyebrow">Authentification</span>
+          <span class="section-title__text">SPF, DKIM, DMARC</span>
+        </h2>
+        <div class="auth" id="auth-stamps"></div>
+      </section>
+
+      <section class="block" id="filter-section" aria-labelledby="filter-title" hidden>
+        <h2 id="filter-title" class="section-title">
+          <span class="section-title__eyebrow">Filtrage</span>
+          <span class="section-title__text">verdict du filtre de reception</span>
+        </h2>
+        <div class="auth" id="filter-stamps"></div>
+        <p class="filter__details" id="filter-details" hidden></p>
+        <p class="filter__note" id="filter-note" hidden></p>
+      </section>
+
+      <section class="block" id="anomalies-section" aria-labelledby="anomalies-title" hidden>
+        <h2 id="anomalies-title" class="section-title">
+          <span class="section-title__eyebrow">Anomalies</span>
+          <span class="section-title__text">relevees a l'inspection</span>
+        </h2>
+        <ul class="anomalies" id="anomalies-list"></ul>
+      </section>
+
+      <section class="block dispatch" aria-labelledby="dispatch-title">
+        <h2 id="dispatch-title" class="section-title">
+          <span class="section-title__eyebrow">Signaler</span>
+          <span class="section-title__text">le courriel sur SpamCop</span>
+        </h2>
+        <p class="dispatch__copy">SpamCop requiert un compte gratuit et une validation manuelle sur leur site.
+          Copiez les en-tetes ci-dessous, puis ouvrez le formulaire de signalement.</p>
+        <label for="spamcop-headers" class="dispatch__label">En-tetes a signaler (tronquees a 50 Ko)</label>
+        <textarea id="spamcop-headers" class="dispatch__headers" rows="6" readonly spellcheck="false"></textarea>
+        <div class="dispatch__actions">
+          <button type="button" class="ghost-button" id="copy-btn">Copier les en-tetes</button>
+          <a class="ghost-button ghost-button--go" id="spamcop-link"
+            href="https://www.spamcop.net/reporter.pl" target="_blank" rel="noopener noreferrer">Ouvrir SpamCop</a>
+          <span class="dispatch__copied" id="copied-note" role="status" hidden>En-tetes copiees.</span>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="colophon">
+    <p>Traitement local. Aucun courriel n'est conserve : tout vit en memoire le temps de l'analyse.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
