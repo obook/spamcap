@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpamCap - Expertise d'en-têtes de courriel</title>
+  <meta name="description" content="Analyseur local d'en-têtes de courriel : tracez le parcours, géolocalisez chaque saut, repérez les usurpations. Rien ne sort de votre serveur.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead__brand">
+      <span class="seal" aria-hidden="true"><span class="seal__mark">SC</span></span>
+      <span class="masthead__lines">
+        <span class="wordmark">SpamCap</span>
+        <span class="masthead__role">Bureau de tri des courriels</span>
+      </span>
+    </div>
+    <a class="masthead__repo" href="https://github.com/obook/spamcap">Code source</a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="hero__eyebrow">Expertise d'en-têtes, en local</p>
+      <h1 class="hero__title">Tracez le parcours d'un courriel, et repérez ce qui cloche.</h1>
+      <p class="hero__lede">Collez l'en-tête brut d'un message reçu. SpamCap reconstitue son trajet,
+        serveur par serveur, géolocalise chaque saut et signale les usurpations lisibles dans les
+        en-têtes. Le corps n'est jamais transmis, aucun courriel n'est conservé.</p>
+      <div class="hero__actions">
+        <a class="stamp-button" href="https://github.com/obook/spamcap">Voir sur GitHub</a>
+        <a class="ghost-link" href="https://github.com/obook/spamcap/blob/main/SPEC.md">Lire la spécification</a>
+      </div>
+      <figure class="shot">
+        <img src="screen2.png" alt="Le parcours d'un courriel : noeud expéditeur, serveurs traversés, noeud destinataire."
+          loading="lazy" width="486" height="747">
+        <figcaption>Le parcours, de l'expéditeur (FROM) aux serveurs jusqu'au destinataire (TO).</figcaption>
+      </figure>
+    </section>
+
+    <div class="route" aria-hidden="true">
+      <span class="route__seal"></span>
+    </div>
+
+    <section class="block">
+      <h2 class="section-title"><span class="section-title__eyebrow">Ce que SpamCap révèle</span></h2>
+      <ul class="cards">
+        <li class="card">
+          <h3 class="card__head">Le parcours complet</h3>
+          <p>Chaque saut <code>Received:</code> reconstitué dans l'ordre, du poste source au
+            destinataire, avec l'IP, le DNS inverse, le pays, l'organisation et le délai.</p>
+        </li>
+        <li class="card">
+          <h3 class="card__head">L'authentification</h3>
+          <p>Résultats SPF, DKIM et DMARC, plus le verdict du filtre de réception (Microsoft 365,
+            SpamAssassin, Free/Proxad).</p>
+        </li>
+        <li class="card">
+          <h3 class="card__head">Les usurpations</h3>
+          <p>Nom affiché trompeur, domaine sosie en punycode, désalignement DMARC, domaine
+            expéditeur créé il y a quelques jours, IP privée insérée entre deux relais.</p>
+        </li>
+        <li class="card">
+          <h3 class="card__head">La carte d'identité</h3>
+          <p>Expéditeur, destinataires, objet, date d'expédition à l'heure de l'expéditeur, âge du
+            domaine via RDAP et origine probable.</p>
+        </li>
+      </ul>
+      <figure class="shot shot--wide">
+        <img src="screen1.png" alt="La carte d'identité d'un courriel et l'avertissement permanent."
+          loading="lazy" width="1055" height="790">
+        <figcaption>La carte d'identité : expéditeur, âge du domaine, origine probable.</figcaption>
+      </figure>
+    </section>
+
+    <div class="route" aria-hidden="true">
+      <span class="route__seal"></span>
+    </div>
+
+    <section class="block creed">
+      <h2 class="section-title"><span class="section-title__eyebrow">Tout reste chez vous</span></h2>
+      <p class="creed__text">SpamCap analyse l'acheminement, jamais le contenu. La géolocalisation
+        est locale, le corps du courriel n'est pas transmis et rien n'est conservé : le traitement
+        vit en mémoire le temps de l'analyse, puis disparaît.</p>
+      <p class="creed__warn">Un verdict porte sur l'acheminement, pas sur l'intention. Un courriel
+        d'hameçonnage peut être techniquement authentifié : restez prudent face aux liens et aux
+        demandes urgentes.</p>
+    </section>
+
+    <div class="route" aria-hidden="true">
+      <span class="route__seal route__seal--arrow"></span>
+    </div>
+
+    <section class="block">
+      <h2 class="section-title"><span class="section-title__eyebrow">Démarrer</span></h2>
+      <p class="start__lede">Python 3.12 et <a href="https://astral.sh/uv">uv</a>. Trois commandes
+        et le serveur tourne en local.</p>
+      <pre class="code"><code>git clone https://github.com/obook/spamcap.git
+cd spamcap
+uv sync
+./launch.sh</code></pre>
+      <p class="start__note">L'interface s'ouvre sur http://127.0.0.1:8000. La géolocalisation
+        utilise une base MaxMind GeoLite2 gratuite, téléchargeable via le script fourni.</p>
+    </section>
+  </main>
+
+  <footer class="colophon">
+    <p>SpamCap, sous Licence Ouverte 2.0 (Etalab). Auteur Olivier Booklage.</p>
+    <p><a href="https://github.com/obook/spamcap">github.com/obook/spamcap</a></p>
+  </footer>
+</body>
+</html>
