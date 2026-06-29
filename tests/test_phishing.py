@@ -62,6 +62,19 @@ def test_reply_to_mismatch_is_flagged() -> None:
     assert "replyto_mismatch" in types_of(result)
 
 
+def test_reply_to_to_public_webmail_is_major() -> None:
+    raw = (
+        "From: Direction <direction@max-bill-schule.de>\n"
+        "Reply-To: direction.urgence@gmail.com\n"
+        "Subject: t"
+    )
+    result = detect(parse_email(raw))
+
+    assert "replyto_webmail" in types_of(result)
+    assert "replyto_mismatch" not in types_of(result)
+    assert result.verdict == VERDICT_DOUBTFUL
+
+
 def test_recent_domain_is_flagged() -> None:
     recent = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
     result = detect(parse_email("From: a@nouveau.fr\nSubject: t"), domain_created=recent)

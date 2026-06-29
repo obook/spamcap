@@ -45,6 +45,44 @@ VERDICT_DOUBTFUL = "DOUTEUX"
 SEVERITY_MINOR = "minor"
 SEVERITY_MAJOR = "major"
 
+# Domaines de messagerie grand public (boites gratuites). Une adresse de reponse
+# qui pointe vers l'un d'eux, alors que l'expediteur affiche un domaine
+# d'organisation, est un motif classique d'usurpation (fraude au president) :
+# les reponses partent vers une boite controlee par l'attaquant.
+PUBLIC_WEBMAIL = frozenset(
+    {
+        "gmail.com",
+        "googlemail.com",
+        "outlook.com",
+        "outlook.fr",
+        "hotmail.com",
+        "hotmail.fr",
+        "live.com",
+        "live.fr",
+        "msn.com",
+        "yahoo.com",
+        "yahoo.fr",
+        "ymail.com",
+        "icloud.com",
+        "me.com",
+        "aol.com",
+        "gmx.com",
+        "gmx.fr",
+        "gmx.net",
+        "mail.com",
+        "proton.me",
+        "protonmail.com",
+        "zoho.com",
+        "yandex.com",
+        "yandex.ru",
+        "free.fr",
+        "orange.fr",
+        "wanadoo.fr",
+        "sfr.fr",
+        "laposte.net",
+    }
+)
+
 # Un appelable qui renvoie l'ensemble des IP servant de MX pour un domaine.
 MxResolver = Callable[[str], set[str]]
 
@@ -396,16 +434,32 @@ def _check_reply_to(parsed: ParsedEmail) -> list[Anomaly]:
 
     reply_domain = _domain_of(parsed.reply_to)
     from_domain = _domain_of(parsed.from_header)
-    if reply_domain and from_domain and _registrable(reply_domain) != _registrable(from_domain):
+    if not reply_domain or not from_domain:
+        return []
+    if _registrable(reply_domain) == _registrable(from_domain):
+        return []
+
+    # Toute adresse de reponse sur un autre domaine que l'expediteur est une
+    # alerte majeure : les reponses partiraient ailleurs que chez l'expediteur
+    # affiche. Le cas le plus grave (boite gratuite) recoit un message renforce.
+    if _registrable(reply_domain) in PUBLIC_WEBMAIL:
         return [
             Anomaly(
-                "replyto_mismatch",
-                SEVERITY_MINOR,
-                f"Les réponses iraient vers {reply_domain}, différent de "
-                f"l'expéditeur {from_domain}.",
+                "replyto_webmail",
+                SEVERITY_MAJOR,
+                f"Les réponses seraient détournées vers une boite gratuite "
+                f"({reply_domain}), distincte de l'expéditeur {from_domain} : "
+                f"motif classique d'usurpation.",
             )
         ]
-    return []
+    return [
+        Anomaly(
+            "replyto_mismatch",
+            SEVERITY_MAJOR,
+            f"Les réponses iraient vers {reply_domain}, différent de "
+            f"l'expéditeur {from_domain}.",
+        )
+    ]
 
 
 def _verdict(anomalies: list[Anomaly]) -> str:
