@@ -148,6 +148,13 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
             has_reverse = resolved.has_reverse
             # Le detecteur ne voit que la resolution de l'IP d'origine.
             resolved_hops.append(resolved)
+            # Une IP privee n'a pas de geo, mais son nom d'hote porte souvent un
+            # domaine public : on le geolocalise, a titre indicatif.
+            if resolved.is_private and hop.from_host:
+                domain_geo = _geo_from_domain(hop.from_host, resolver)
+                if domain_geo:
+                    resolved.country = domain_geo.country
+                    resolved.country_code = domain_geo.country_code
         else:
             # Aucune IP dans l'en-tete : le detecteur ne dispose de rien.
             resolved_hops.append(ResolvedIP(ip="", ip_version=0))
@@ -245,6 +252,26 @@ def _domain_of(address_header: str | None) -> str | None:
     if "@" not in email_address:
         return None
     return email_address.rsplit("@", 1)[1].lower()
+
+
+def _geo_from_domain(host: str, resolver: Resolver) -> ResolvedIP | None:
+    """Geolocalise le domaine enregistrable d'un nom d'hote, a titre indicatif.
+
+    Utile pour un saut en IP privee : le domaine public (par exemple proxad.net)
+    revele le pays de l'operateur, faute de mieux.
+    """
+
+    labels = host.strip(".").split(".")
+    if len(labels) < 2:
+        return None
+    domain = ".".join(labels[-2:])
+    ip = resolver.forward_lookup(domain)
+    if not ip:
+        return None
+    resolved = resolver.resolve(ip)
+    if resolved.is_private or not resolved.country:
+        return None
+    return resolved
 
 
 def _build_originating(ip: str | None, resolver: Resolver) -> HopInfo | None:

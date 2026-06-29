@@ -213,13 +213,11 @@ function buildHop(hop, index) {
 
   const seal = el("div", listed ? "hop__seal hop__seal--listed" : "hop__seal");
   seal.appendChild(el("span", "hop__index", String(hop.hop_index)));
-  if (hop.is_private) {
+  const flag = flagEmoji(hop.country_code);
+  if (flag) {
+    seal.appendChild(el("span", "hop__flag", flag));
+  } else if (hop.is_private) {
     seal.appendChild(el("span", "hop__flag", "local"));
-  } else {
-    const flag = flagEmoji(hop.country_code);
-    if (flag) {
-      seal.appendChild(el("span", "hop__flag", flag));
-    }
   }
   item.appendChild(seal);
   item.appendChild(buildHopBody(hop));
@@ -233,13 +231,11 @@ function buildOriginNode(hop) {
 
   const seal = el("div", "hop__seal");
   seal.appendChild(el("span", "hop__endpoint-glyph", "ORIG"));
-  if (hop.is_private) {
+  const flag = flagEmoji(hop.country_code);
+  if (flag) {
+    seal.appendChild(el("span", "hop__flag", flag));
+  } else if (hop.is_private) {
     seal.appendChild(el("span", "hop__flag", "local"));
-  } else {
-    const flag = flagEmoji(hop.country_code);
-    if (flag) {
-      seal.appendChild(el("span", "hop__flag", flag));
-    }
   }
   item.appendChild(seal);
 
@@ -268,8 +264,11 @@ function buildHopBody(hop) {
 
   const lines = el("dl", "hop__lines");
   if (hop.ip) {
-    // PTR et Org dérivent de l'IP : inutiles sans IP (le nom d'hôte est déjà
-    // affiché comme ligne principale).
+    // Nom d'hote de l'en-tete (DNS inverse ou HELO), utile surtout pour une IP
+    // privee sans PTR ; masque s'il double le PTR resolu.
+    if (hop.from_host && hop.from_host !== (hop.ptr || "").toLowerCase()) {
+      addHopLine(lines, "Hôte", hop.from_host);
+    }
     addHopLine(lines, "PTR", ptrLabel(hop));
     addHopLine(lines, "Org", hop.org || "inconnue");
   } else if (hop.resolved_ip) {
@@ -417,10 +416,14 @@ function ptrLabel(hop) {
 
 function placeLabel(hop) {
   if (hop.is_private) {
-    if (hop.ip && hop.ip.includes(":")) {
-      return "Adresse IPv6 locale (lien-local ou unique-local)";
+    let base =
+      hop.ip && hop.ip.includes(":")
+        ? "Adresse IPv6 locale (lien-local ou unique-local)"
+        : "Réseau privé (RFC 1918)";
+    if (hop.country) {
+      base += " - " + hop.country + " (via le domaine)";
     }
-    return "Réseau privé (RFC 1918)";
+    return base;
   }
   const parts = [hop.city, hop.country].filter(Boolean);
   let label = parts.join(", ");

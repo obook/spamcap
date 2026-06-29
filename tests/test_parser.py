@@ -137,6 +137,19 @@ def test_originating_ip_fallback_header() -> None:
     assert result.originating_ip == "81.2.69.142"
 
 
+def test_from_host_prefers_reverse_dns() -> None:
+    raw = "\n".join(
+        [
+            "Received: from helo.example (mx.real.example [203.0.113.9])",
+            "\tby relay; Tue, 01 Jan 2026 10:00:00 +0000",
+            "From: a@b.com",
+        ]
+    )
+    result = parse_email(raw)
+
+    assert result.hops[0].from_host == "mx.real.example"
+
+
 def test_return_path_extracted() -> None:
     raw = "From: a@b.fr\nReturn-Path: <bounce@b.fr>\nSubject: t"
     result = parse_email(raw)

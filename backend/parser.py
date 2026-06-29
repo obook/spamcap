@@ -47,6 +47,10 @@ _IPV6_TOKEN_RE = re.compile(r"[0-9A-Fa-f:]{2,}")
 # Un nom d'hote : des labels alphanumériques séparés par des points.
 _HOST_RE = re.compile(r"(?<![\w.-])([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?![\w-])")
 
+# Le DNS inverse du pair, dans la forme "from HELO (rdns [IP])" : plus
+# identifiant que le nom annoncé (HELO).
+_RDNS_RE = re.compile(r"\(([A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+)\s*\[")
+
 
 @dataclass
 class RawHop:
@@ -272,6 +276,10 @@ def _first_host(text: str) -> str | None:
 
     if not text:
         return None
+    # Le DNS inverse entre parenthèses identifie mieux le pair que le HELO.
+    reverse = _RDNS_RE.search(text)
+    if reverse:
+        return reverse.group(1).rstrip(".").lower()
     for match in _HOST_RE.finditer(text):
         host = match.group(1)
         if _valid_ip(host):
