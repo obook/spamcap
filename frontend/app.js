@@ -1,10 +1,9 @@
 // SpamCap - logique de l'interface.
-// Appelle POST /analyze et rend le resultat. Le DOM est construit avec
-// createElement et textContent : aucune donnee reseau n'est injectee en HTML.
+// Appelle POST /analyze et rend le résultat. Le DOM est construit avec
+// createElement et textContent : aucune donnée réseau n'est injectée en HTML.
 
 "use strict";
 
-const SPAMCOP_HEADER_LIMIT = 50 * 1024;
 const STORAGE_KEY = "spamcap:dernier-entete";
 
 const form = document.getElementById("analyze-form");
@@ -13,9 +12,7 @@ const button = document.getElementById("analyze-btn");
 const formError = document.getElementById("form-error");
 
 const report = document.getElementById("report");
-const verdictStamp = document.getElementById("verdict-stamp");
-const verdictWord = document.getElementById("verdict-word");
-const verdictMeta = document.getElementById("verdict-meta");
+const identity = document.getElementById("identity");
 const spine = document.getElementById("route-spine");
 const routeEmpty = document.getElementById("route-empty");
 const authStamps = document.getElementById("auth-stamps");
@@ -25,27 +22,20 @@ const filterDetails = document.getElementById("filter-details");
 const filterNote = document.getElementById("filter-note");
 const anomaliesSection = document.getElementById("anomalies-section");
 const anomaliesList = document.getElementById("anomalies-list");
-const spamcopHeaders = document.getElementById("spamcop-headers");
-const copyButton = document.getElementById("copy-btn");
-const copiedNote = document.getElementById("copied-note");
-
-const VERDICT_CLASS = {
-  "LÉGITIME": "verdict__stamp--legit",
-  SUSPECT: "verdict__stamp--suspect",
-  DOUTEUX: "verdict__stamp--doubt",
-};
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const raw = rawField.value.trim();
 
   if (!raw) {
-    showError("Collez d'abord un en-tete de courriel.");
+    showError("Collez d'abord un en-tête de courriel.");
     return;
   }
 
   setBusy(true);
   hideError();
+  // Effacer le compte-rendu précédent pendant la nouvelle recherche.
+  report.hidden = true;
 
   try {
     const response = await fetch("/analyze", {
@@ -60,20 +50,20 @@ form.addEventListener("submit", async (event) => {
     }
 
     const data = await response.json();
-    renderReport(data, rawField.value);
+    renderReport(data);
   } catch (error) {
-    showError("Le service ne repond pas. Verifiez que le serveur est lance.");
+    showError("Le service ne répond pas. Vérifiez que le serveur est lancé.");
   } finally {
     setBusy(false);
   }
 });
 
-// Conserve l'en-tete colle d'un rafraichissement a l'autre, dans le navigateur.
+// Conserve l'en-tête collé d'un rafraîchissement à l'autre, dans le navigateur.
 rawField.addEventListener("input", () => {
   try {
     localStorage.setItem(STORAGE_KEY, rawField.value);
   } catch (error) {
-    // localStorage indisponible (navigation privee) : on ignore silencieusement.
+    // localStorage indisponible (navigation privée) : on ignore silencieusement.
   }
 });
 
@@ -84,53 +74,53 @@ function restoreSavedHeader() {
       rawField.value = saved;
     }
   } catch (error) {
-    // Rien a restaurer si localStorage est indisponible.
+    // Rien à restaurer si localStorage est indisponible.
   }
 }
 
-copyButton.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(spamcopHeaders.value);
-    copiedNote.hidden = false;
-    window.setTimeout(() => {
-      copiedNote.hidden = true;
-    }, 2500);
-  } catch (error) {
-    spamcopHeaders.select();
-  }
-});
-
-function renderReport(data, rawInput) {
-  renderVerdict(data);
-  renderRoute(data.hops);
+function renderReport(data) {
+  renderIdentity(data);
+  renderRoute(data);
   renderAuth(data.auth);
   renderFilter(data.filter_verdict, data.auth);
   renderAnomalies(data.anomalies);
-  renderDispatch(rawInput);
 
   report.hidden = false;
   report.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function renderVerdict(data) {
-  verdictWord.textContent = data.verdict;
-  verdictStamp.className = "verdict__stamp";
-  const modifier = VERDICT_CLASS[data.verdict];
-  if (modifier) {
-    verdictStamp.classList.add(modifier);
+function renderIdentity(data) {
+  identity.replaceChildren();
+  addCardRow("Expéditeur", data.from_address || "inconnu");
+  addCardRow("Destinataire(s)", data.to_recipients || "inconnu");
+  if (data.cc_recipients) {
+    addCardRow("Copie", data.cc_recipients);
   }
-
-  verdictMeta.replaceChildren();
-  addMetaRow("Objet", data.subject || "non precise");
-  addMetaRow("De", data.from_domain || "inconnu");
-  addMetaRow("A", data.to_domain || "inconnu");
-  addMetaRow("Volume", formatVolume(data));
+  addCardRow("Objet", data.subject || "non précisé");
+  addCardRow("Date d'expédition", formatInstant(data.date));
+  const origin = firstGeoHop(data.hops);
+  if (origin) {
+    addCardRow("Origine probable", originLabel(origin));
+  }
   if (data.geoip_warning) {
-    addMetaRow("Note", data.geoip_warning);
+    addCardRow("Note", data.geoip_warning);
   }
 }
 
-function renderRoute(hops) {
+function firstGeoHop(hops) {
+  return hops.find((hop) => hop.country_code || hop.country) || null;
+}
+
+function originLabel(hop) {
+  const flag = flagEmoji(hop.country_code);
+  const place =
+    [hop.city, hop.country].filter(Boolean).join(", ") || hop.country_code || "inconnu";
+  const when = hop.timestamp ? formatInstant(hop.timestamp) : "date inconnue";
+  return (flag ? flag + " " : "") + place + " (" + when + ")";
+}
+
+function renderRoute(data) {
+  const hops = data.hops;
   spine.replaceChildren();
 
   if (!hops.length) {
@@ -139,9 +129,35 @@ function renderRoute(hops) {
   }
   routeEmpty.hidden = true;
 
+  if (data.from_address) {
+    spine.appendChild(buildEndpoint("Expéditeur", data.from_address, "DE"));
+  }
   hops.forEach((hop, index) => {
     spine.appendChild(buildHop(hop, index));
   });
+  if (data.to_recipients) {
+    spine.appendChild(buildEndpoint("Destinataire", data.to_recipients, "À"));
+  }
+}
+
+function buildEndpoint(label, header, glyph) {
+  const item = el("li", "hop hop--endpoint");
+
+  const seal = el("div", "hop__seal hop__seal--endpoint");
+  seal.appendChild(el("span", "hop__endpoint-glyph", glyph));
+  item.appendChild(seal);
+
+  const body = el("div", "hop__body");
+  body.appendChild(el("p", "hop__endpoint-label", label));
+  body.appendChild(el("div", "hop__ip", extractEmails(header)));
+  item.appendChild(body);
+
+  return item;
+}
+
+function extractEmails(header) {
+  const matches = header.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g);
+  return matches ? matches.join(", ") : header;
 }
 
 function buildHop(hop, index) {
@@ -165,7 +181,7 @@ function buildHop(hop, index) {
 
   const body = el("div", "hop__body");
 
-  const ipLine = el("div", "hop__ip", hop.ip || "IP absente");
+  const ipLine = el("div", "hop__ip", hop.ip || hop.from_host || "Saut sans adresse IP");
   if (hop.ip && hop.ip_version) {
     ipLine.appendChild(el("span", "hop__ipver", "IPv" + hop.ip_version));
   }
@@ -177,14 +193,24 @@ function buildHop(hop, index) {
   }
 
   const lines = el("dl", "hop__lines");
-  addHopLine(lines, "PTR", hop.ptr || "inconnu");
-  addHopLine(lines, "Org", hop.org || "inconnue");
-  addHopLine(lines, "Heure", formatTimestamp(hop.timestamp));
+  if (hop.ip) {
+    // PTR et Org dérivent de l'IP : inutiles sans IP (le nom d'hôte est déjà
+    // affiché comme ligne principale).
+    addHopLine(lines, "PTR", ptrLabel(hop));
+    addHopLine(lines, "Org", hop.org || "inconnue");
+  } else if (hop.resolved_ip) {
+    // Saut sans IP géolocalisé via le DNS actuel de son nom d'hôte.
+    addHopLine(lines, "IP actuelle", hop.resolved_ip);
+    if (hop.org) {
+      addHopLine(lines, "Org", hop.org);
+    }
+  }
+  addHopLine(lines, "Heure", formatInstant(hop.timestamp));
   body.appendChild(lines);
 
   const badges = el("div", "hop__badges");
   if (hop.is_private) {
-    badges.appendChild(el("span", "badge badge--local", "Reseau local"));
+    badges.appendChild(el("span", "badge badge--local", "Réseau local"));
   }
   if (hop.dnsbl && hop.dnsbl.spamcop === true) {
     badges.appendChild(el("span", "badge badge--listed", "Liste SCBL"));
@@ -235,7 +261,7 @@ function renderFilter(verdict, auth) {
     verdict.is_spam === true ? "fail" : verdict.is_spam === false ? "pass" : "absent";
   const label =
     verdict.is_spam === true
-      ? "indesirable"
+      ? "indésirable"
       : verdict.is_spam === false
       ? "propre"
       : "non concluant";
@@ -261,8 +287,8 @@ function renderFilter(verdict, auth) {
   const noAuth = !auth.spf && !auth.dkim && !auth.dmarc;
   if (verdict.source && verdict.source.indexOf("Microsoft") === 0 && noAuth) {
     filterNote.textContent =
-      "Message interne Microsoft 365 : SPF, DKIM et DMARC ne s'appliquent pas a un " +
-      "courriel qui n'a pas quitte le domaine.";
+      "Message interne Microsoft 365 : SPF, DKIM et DMARC ne s'appliquent pas à un " +
+      "courriel qui n'a pas quitté le domaine.";
     filterNote.hidden = false;
   }
 }
@@ -285,17 +311,11 @@ function renderAnomalies(anomalies) {
   });
 }
 
-function renderDispatch(rawInput) {
-  const headerBlock = rawInput.split(/\r?\n\r?\n/)[0];
-  spamcopHeaders.value = headerBlock.slice(0, SPAMCOP_HEADER_LIMIT);
-  copiedNote.hidden = true;
-}
-
 // ---------------------------------------------------------------- Aides
 
-function addMetaRow(label, value) {
-  verdictMeta.appendChild(el("dt", null, label));
-  verdictMeta.appendChild(el("dd", null, value));
+function addCardRow(label, value) {
+  identity.appendChild(el("dt", null, label));
+  identity.appendChild(el("dd", null, value));
 }
 
 function addHopLine(list, label, value) {
@@ -305,15 +325,32 @@ function addHopLine(list, label, value) {
   list.appendChild(row);
 }
 
+function ptrLabel(hop) {
+  if (hop.ptr) {
+    return hop.ptr;
+  }
+  if (hop.has_reverse === false) {
+    return "aucun reverse DNS";
+  }
+  if (hop.is_private) {
+    return "non applicable";
+  }
+  return "inconnu";
+}
+
 function placeLabel(hop) {
   if (hop.is_private) {
     if (hop.ip && hop.ip.includes(":")) {
       return "Adresse IPv6 locale (lien-local ou unique-local)";
     }
-    return "Reseau prive (RFC 1918)";
+    return "Réseau privé (RFC 1918)";
   }
   const parts = [hop.city, hop.country].filter(Boolean);
-  return parts.join(", ");
+  let label = parts.join(", ");
+  if (label && !hop.ip && hop.resolved_ip) {
+    label += " (via le nom d'hôte)";
+  }
+  return label;
 }
 
 function authState(value) {
@@ -340,15 +377,62 @@ function flagEmoji(code) {
   );
 }
 
-function formatTimestamp(value) {
+// Affiche un instant dans le fuseau d'origine de l'en-tête (sans le convertir
+// dans celui du navigateur), avec le décalage explicite.
+function formatInstant(value) {
   if (!value) {
-    return "inconnu";
+    return "inconnue";
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "inconnu";
+    return value;
   }
-  return date.toLocaleString("fr-FR");
+  const offsetMinutes = parseOffset(value);
+  if (offsetMinutes === null) {
+    return date.toLocaleString("fr-FR") + " (votre heure locale)";
+  }
+  const shifted = new Date(date.getTime() + offsetMinutes * 60000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const wall =
+    pad(shifted.getUTCDate()) +
+    "/" +
+    pad(shifted.getUTCMonth() + 1) +
+    "/" +
+    shifted.getUTCFullYear() +
+    " " +
+    pad(shifted.getUTCHours()) +
+    ":" +
+    pad(shifted.getUTCMinutes()) +
+    ":" +
+    pad(shifted.getUTCSeconds());
+  return wall + " (" + offsetLabel(offsetMinutes) + ")";
+}
+
+function parseOffset(value) {
+  // Retirer un éventuel commentaire de zone, par exemple "+0200 (CEST)".
+  const trimmed = value.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (/[zZ]$/.test(trimmed)) {
+    return 0;
+  }
+  const match = trimmed.match(/([+-])(\d{2}):?(\d{2})$/);
+  if (match) {
+    const sign = match[1] === "-" ? -1 : 1;
+    return sign * (parseInt(match[2], 10) * 60 + parseInt(match[3], 10));
+  }
+  if (/\b(UT|UTC|GMT)$/i.test(trimmed)) {
+    return 0;
+  }
+  return null;
+}
+
+function offsetLabel(minutes) {
+  if (minutes === 0) {
+    return "UTC";
+  }
+  const sign = minutes < 0 ? "-" : "+";
+  const abs = Math.abs(minutes);
+  const pad = (n) => String(n).padStart(2, "0");
+  return "UTC" + sign + pad(Math.floor(abs / 60)) + ":" + pad(abs % 60);
 }
 
 function formatDelay(seconds) {
@@ -363,30 +447,12 @@ function formatDelay(seconds) {
   return sign + (abs / 3600).toFixed(1) + " h";
 }
 
-function formatVolume(data) {
-  const analyzed = formatBytes(data.analyzed_size_bytes);
-  if (data.truncated) {
-    return formatBytes(data.raw_size_bytes) + " recus, " + analyzed + " analyses";
-  }
-  return analyzed + " analyses";
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024) {
-    return bytes + " o";
-  }
-  if (bytes < 1024 * 1024) {
-    return (bytes / 1024).toFixed(1) + " Ko";
-  }
-  return (bytes / (1024 * 1024)).toFixed(1) + " Mo";
-}
-
 function messageForStatus(status) {
   if (status === 413) {
-    return "En-tete trop volumineux. Collez uniquement les en-tetes.";
+    return "En-tête trop volumineux. Collez uniquement les en-têtes.";
   }
   if (status === 429) {
-    return "Trop de requetes. Patientez un instant.";
+    return "Trop de requêtes. Patientez un instant.";
   }
   return "Erreur du serveur (code " + status + ").";
 }
@@ -404,7 +470,17 @@ function el(tag, className, text) {
 
 function setBusy(busy) {
   button.disabled = busy;
-  button.textContent = busy ? "Analyse..." : "Analyser";
+  if (!busy) {
+    button.textContent = "Analyser";
+    return;
+  }
+  button.replaceChildren(document.createTextNode("Analyse"));
+  const dots = el("span", "dots");
+  dots.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i += 1) {
+    dots.appendChild(el("span", "dots__dot", "."));
+  }
+  button.appendChild(dots);
 }
 
 function showError(message) {
