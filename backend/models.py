@@ -1,9 +1,9 @@
-"""Modeles Pydantic de l'API.
+"""Modèles Pydantic de l'API.
 
-Ces modeles definissent le contrat JSON expose par l'API : la requete d'analyse
-en entree et le resultat complet en sortie. Ils sont distincts des dataclasses
-internes de `parser`, `resolver` et `detector` ; `main` assemble ces dernieres
-en :class:`AnalysisResult`.
+Ces modèles définissent le contrat JSON exposé par l'API : la requête
+d'analyse en entrée et le résultat complet en sortie. Ils sont distincts des
+dataclasses internes de `parser`, `resolver` et `detector` ; `analysis`
+assemble ces dernières en :class:`AnalysisResult`.
 """
 
 from __future__ import annotations
@@ -14,13 +14,15 @@ from pydantic import BaseModel, Field
 
 
 class AnalyzeRequest(BaseModel):
-    """Charge utile de la requete d'analyse."""
+    """Charge utile de la requête d'analyse."""
 
-    raw_headers: str = Field(..., description="En-tete brut du courriel a analyser.")
+    raw_headers: str = Field(
+        ..., description="En-tête brut du courriel à analyser."
+    )
 
 
 class HopInfo(BaseModel):
-    """Un saut du parcours, enrichi de sa resolution et de sa reputation."""
+    """Un saut du parcours, enrichi de sa résolution et de sa réputation."""
 
     hop_index: int
     ip: str | None
@@ -40,7 +42,7 @@ class HopInfo(BaseModel):
 
 
 class AuthResult(BaseModel):
-    """Resultats d'authentification SPF, DKIM et DMARC."""
+    """Résultats d'authentification SPF, DKIM et DMARC."""
 
     spf: str | None
     dkim: str | None
@@ -50,7 +52,7 @@ class AuthResult(BaseModel):
 
 
 class AnomalyItem(BaseModel):
-    """Une anomalie detectee, avec sa severite et sa description lisible."""
+    """Une anomalie détectée, avec sa sévérité et sa description lisible."""
 
     type: str
     severity: str
@@ -58,7 +60,7 @@ class AnomalyItem(BaseModel):
 
 
 class FilterVerdict(BaseModel):
-    """Verdict du filtre anti-spam du fournisseur de reception, normalise."""
+    """Verdict du filtre anti-spam du fournisseur de réception, normalisé."""
 
     source: str | None
     is_spam: bool | None
@@ -67,7 +69,7 @@ class FilterVerdict(BaseModel):
 
 
 class AnalysisResult(BaseModel):
-    """Resultat complet d'une analyse, renvoye par POST /analyze."""
+    """Résultat complet d'une analyse, renvoyé par POST /analyze."""
 
     hops: list[HopInfo]
     auth: AuthResult

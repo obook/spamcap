@@ -6,22 +6,20 @@ Chaque IP de saut trouvée par l'analyseur est enrichie ici avec :
 - son pays et sa ville, via la base MaxMind GeoLite2 ;
 - son organisation et la description de son ASN, via WHOIS (ipwhois).
 
-Chaque résolution se dégrade proprement : un dépassement de délai réseau ou un
-enregistrement absent donne ``None`` (affiché "inconnu" dans l'interface),
+Chaque résolution se dégrade proprement : un dépassement de délai réseau ou
+un enregistrement absent donne ``None`` (affiché "inconnu" dans l'interface),
 jamais une exception. Les adresses privées sont étiquetées localement et
 n'effectuent aucune résolution réseau.
 
-Une instance :class:`Resolver` porte un cache WHOIS de session, de sorte qu'une
-même IP n'est jamais interrogée deux fois au cours d'une analyse. Le cache est
-volontairement lié à l'instance et ne doit pas être partagé entre les requêtes
-de plusieurs utilisateurs.
+Une instance :class:`Resolver` porte un cache de session, de sorte qu'une même
+IP n'est jamais interrogée deux fois au cours d'une analyse. Le cache est lié à
+l'instance et ne doit pas être partagé entre les requêtes de plusieurs
+utilisateurs. Les modèles sans état vivent dans :mod:`backend.resolver.models`.
 """
 
 from __future__ import annotations
 
 import ipaddress
-import os
-from dataclasses import dataclass
 from pathlib import Path
 
 import dns.resolver
@@ -32,61 +30,28 @@ import requests
 from ipwhois import IPWhois
 from ipwhois.exceptions import BaseIpwhoisException
 
-# Chemin de la base GeoLite2 City. Surchargeable par la variable d'environnement
-# SPAMCAP_GEOIP ; sinon, data/GeoLite2-City.mmdb relatif a la racine du depot.
-DEFAULT_GEOIP_PATH = Path(os.environ.get("SPAMCAP_GEOIP", "data/GeoLite2-City.mmdb"))
+from .models import (
+    DEFAULT_DNS_TIMEOUT,
+    DEFAULT_GEOIP_PATH,
+    DNSBL_ZONES,
+    ResolvedIP,
+    dnsbl_query_name,
+    is_private_ip,
+)
 
-# Délai en secondes avant qu'une requête DNS soit abandonnée et signalée inconnue.
-DEFAULT_DNS_TIMEOUT = 3.0
-
-# Zones de listes noires DNS interrogées pour chaque IP publique. La clé est le
-# nom court utilisé dans le dictionnaire de résultat et dans le badge de l'interface.
-DNSBL_ZONES = {
-    "spamcop": "bl.spamcop.net",
-    "spamhaus": "zen.spamhaus.org",
-}
-
-
-def dnsbl_query_name(ip: str, zone: str) -> str:
-    """Construit le nom de requête DNSBL d'une IP, octets IPv4 ou nibbles IPv6 inversés.
-
-    Réutilise la machinerie du pointeur inverse : ``1.2.3.4`` devient
-    ``4.3.2.1.bl.spamcop.net`` et une adresse IPv6 devient sa séquence de nibbles
-    inversée suivie de la zone.
-    """
-
-    reverse = dns.reversename.from_address(ip).to_text().rstrip(".")
-    reverse = reverse.removesuffix(".in-addr.arpa").removesuffix(".ip6.arpa")
-    return f"{reverse}.{zone}"
-
-
-@dataclass
-class ResolvedIP:
-    """Vue enrichie d'une adresse IP unique."""
-
-    ip: str
-    ip_version: int
-    ptr: str | None = None
-    has_reverse: bool | None = None
-    country: str | None = None
-    country_code: str | None = None
-    city: str | None = None
-    org: str | None = None
-    is_private: bool = False
-
-
-def is_private_ip(ip: str) -> bool:
-    """Renvoie True pour les adresses privées, loopback ou link-local (v4 et v6)."""
-
-    try:
-        address = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    return address.is_private or address.is_loopback or address.is_link_local
+__all__ = [
+    "Resolver",
+    "ResolvedIP",
+    "is_private_ip",
+    "dnsbl_query_name",
+    "DNSBL_ZONES",
+    "DEFAULT_GEOIP_PATH",
+    "DEFAULT_DNS_TIMEOUT",
+]
 
 
 class Resolver:
-    """Résout les métadonnées d'IP avec dégradation propre et cache par instance."""
+    """Résout les métadonnées d'IP, avec dégradation propre et cache."""
 
     def __init__(
         self,
@@ -110,7 +75,7 @@ class Resolver:
         return self._geoip_reader is not None
 
     def resolve(self, ip: str) -> ResolvedIP:
-        """Résout une IP unique en un :class:`ResolvedIP`, sans jamais lever d'exception."""
+        """Résout une IP unique, sans jamais lever d'exception."""
 
         try:
             version = ipaddress.ip_address(ip).version
@@ -137,7 +102,7 @@ class Resolver:
         )
 
     def close(self) -> None:
-        """Libère le lecteur GeoIP. Peut être appelé plusieurs fois sans risque."""
+        """Libère le lecteur GeoIP. Appelable plusieurs fois sans risque."""
 
         if self._geoip_reader is not None:
             self._geoip_reader.close()
@@ -147,13 +112,15 @@ class Resolver:
         self, geoip_path: Path | None
     ) -> geoip2.database.Reader | None:
         if geoip_path is None:
-            self.geoip_warning = "Géolocalisation désactivée : aucune base configurée."
+            self.geoip_warning = (
+                "Géolocalisation désactivée : aucune base configurée."
+            )
             return None
         # Un chemin relatif est ancré à la racine du projet, pour fonctionner
         # quel que soit le répertoire de lancement.
         path = Path(geoip_path)
         if not path.is_absolute():
-            path = Path(__file__).resolve().parent.parent / path
+            path = Path(__file__).resolve().parent.parent.parent / path
         try:
             return geoip2.database.Reader(str(path))
         except (FileNotFoundError, OSError):
@@ -167,8 +134,8 @@ class Resolver:
         """Renvoie le couple (nom PTR, has_reverse).
 
         ``has_reverse`` vaut True si un PTR existe, False si son absence est
-        confirmée (NXDOMAIN ou aucun enregistrement), et None si la résolution a
-        échoué (délai, erreur réseau).
+        confirmée (NXDOMAIN ou aucun enregistrement), et None si la résolution
+        a échoué (délai, erreur réseau).
         """
 
         try:
@@ -181,10 +148,10 @@ class Resolver:
             return None, None
 
     def forward_lookup(self, host: str) -> str | None:
-        """Résout un nom d'hote en IP (A puis AAAA), ou None.
+        """Résout un nom d'hôte en IP (A puis AAAA), ou None.
 
-        Sert a geolocaliser un saut qui n'a pas d'IP mais porte un nom d'hote.
-        L'IP renvoyee est l'adresse actuelle du nom, pas forcement celle du
+        Sert à géolocaliser un saut qui n'a pas d'IP mais porte un nom d'hôte.
+        L'IP renvoyée est l'adresse actuelle du nom, pas forcément celle du
         transit d'origine : l'appelant doit le signaler.
         """
 
@@ -193,7 +160,7 @@ class Resolver:
                 answer = self._dns.resolve(host, record_type)
             except Exception:
                 continue
-            if len(answer):
+            if answer:
                 return str(answer[0])
         return None
 
@@ -204,7 +171,11 @@ class Resolver:
             return None, None, None
         try:
             record = self._geoip_reader.city(ip)
-            return record.country.name, record.country.iso_code, record.city.name
+            return (
+                record.country.name,
+                record.country.iso_code,
+                record.city.name,
+            )
         except geoip2.errors.AddressNotFoundError:
             return None, None, None
         except (ValueError, geoip2.errors.GeoIP2Error):
@@ -229,7 +200,7 @@ class Resolver:
             description = None
         if asn in (None, "", "NA"):
             asn = None
-        # Repli sur le nom du reseau RDAP (par exemple "MSFT") quand la
+        # Repli sur le nom du réseau RDAP (par exemple "MSFT") quand la
         # description d'ASN manque, ce qui arrive souvent en IPv6.
         if description is None:
             network_name = (result.get("network") or {}).get("name")
@@ -268,7 +239,8 @@ class Resolver:
         except dns.resolver.NXDOMAIN:
             return False
         except Exception:
-            # Délai, SERVFAIL, famille non prise en charge : inconnu, jamais une erreur.
+            # Délai, SERVFAIL, famille non prise en charge : inconnu, jamais
+            # une erreur.
             return None
 
     def domain_dates(
@@ -323,8 +295,8 @@ class Resolver:
     def _extract_registrar(entities: list) -> str | None:
         """Extrait le nom du bureau d'enregistrement des entités RDAP.
 
-        L'entité de rôle "registrar" porte son nom dans son vCard (champ "fn").
-        Renvoie None si aucune entité de ce rôle n'expose de nom.
+        L'entité de rôle "registrar" porte son nom dans son vCard (champ
+        "fn"). Renvoie None si aucune entité de ce rôle n'expose de nom.
         """
 
         for entity in entities:

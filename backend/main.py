@@ -1,43 +1,33 @@
 """Application FastAPI de SpamCap.
 
-Point d'entree du service. Expose deux routes :
+Point d'entrée du service. Expose deux routes :
 
-- ``POST /analyze`` : recoit un en-tete brut, renvoie un :class:`AnalysisResult`
-  complet (parcours resolu, reputation DNSBL, anomalies, verdict).
+- ``POST /analyze`` : reçoit un en-tête brut, renvoie un
+  :class:`AnalysisResult` (parcours résolu, DNSBL, anomalies, verdict).
 - ``GET /health`` : sonde de supervision.
 
-L'orchestration enchaine l'analyse (`parser`), la resolution de chaque saut
-(`resolver`, avec verification DNSBL) et la detection de falsification
-(`detector`). Aucun courriel n'est conserve : tout vit en memoire le temps de la
-requete.
+L'orchestration de l'analyse vit dans :mod:`backend.analysis` ; ce module se
+limite au cadre web : routes, plafonnement, et service du frontend statique.
 """
 
 from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from collections.abc import Iterator
-from email.utils import parseaddr
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend import parser
-from backend.detector import detect
-from backend.models import (
-    AnalysisResult,
-    AnalyzeRequest,
-    AnomalyItem,
-    AuthResult,
-    FilterVerdict,
-    HopInfo,
-)
-from backend.resolver import ResolvedIP, Resolver
+from backend.analysis import build_analysis
+from backend.models import AnalysisResult, AnalyzeRequest
+from backend.resolver import Resolver
 
-# Origines autorisees pour le frontend en developpement local.
+# Origines autorisées pour le frontend en développement local.
 ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
@@ -45,7 +35,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
 ]
 
-# Plafonnement simple : nombre maximal de requetes par client sur la fenetre.
+# Plafonnement simple : nombre maximal de requêtes par client sur la fenêtre.
 RATE_LIMIT_REQUESTS = 60
 RATE_LIMIT_WINDOW_SECONDS = 60.0
 
@@ -62,13 +52,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Historique des appels par client, pour le plafonnement en memoire.
+# Historique des appels par client, pour le plafonnement en mémoire.
 _request_history: dict[str, deque[float]] = defaultdict(deque)
 
 
 @app.middleware("http")
-async def rate_limit(request: Request, call_next):
-    """Plafonne le nombre de requetes par client sur une fenetre glissante."""
+async def rate_limit(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Plafonne le nombre de requêtes par client sur une fenêtre glissante."""
 
     client = request.client.host if request.client else "inconnu"
     now = time.monotonic()
@@ -80,7 +72,7 @@ async def rate_limit(request: Request, call_next):
     if len(history) >= RATE_LIMIT_REQUESTS:
         return JSONResponse(
             status_code=429,
-            content={"detail": "Trop de requêtes. Reessayez dans un instant."},
+            content={"detail": "Trop de requêtes. Réessayez dans un instant."},
         )
 
     history.append(now)
@@ -88,9 +80,9 @@ async def rate_limit(request: Request, call_next):
 
 
 def get_resolver() -> Iterator[Resolver]:
-    """Fournit un resolveur dedie a la requete.
+    """Fournit un résolveur dédié à la requête.
 
-    Une instance par requete garantit que le cache WHOIS n'est jamais partage
+    Une instance par requête garantit que le cache WHOIS n'est jamais partagé
     entre les analyses de plusieurs utilisateurs.
     """
 
@@ -112,195 +104,19 @@ def health() -> dict[str, str]:
 def analyze(
     request: AnalyzeRequest, resolver: Resolver = Depends(get_resolver)
 ) -> AnalysisResult:
-    """Analyse un en-tete brut et renvoie le resultat complet."""
+    """Analyse un en-tête brut et renvoie le résultat complet."""
 
     raw = request.raw_headers
     if len(raw.encode("utf-8")) > parser.MAX_INPUT_BYTES:
         raise HTTPException(
             status_code=413,
-            detail="En-tête trop volumineux. Seuls les en-têtes sont nécessaires.",
+            detail="En-tête trop volumineux. Seuls les en-têtes sont utiles.",
         )
 
     return build_analysis(raw, resolver)
 
 
-def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
-    """Assemble le resultat d'analyse a partir des modules internes."""
-
-    parsed = parser.parse_email(raw)
-
-    hops: list[HopInfo] = []
-    resolved_hops: list[ResolvedIP] = []
-    previous_timestamp = None
-
-    no_dnsbl: dict[str, bool | None] = {"spamcop": None, "spamhaus": None}
-
-    for hop in parsed.hops:
-        resolved_ip = None
-        ptr = None
-        has_reverse = None
-        dnsbl = no_dnsbl
-
-        if hop.from_ip:
-            resolved = resolver.resolve(hop.from_ip)
-            dnsbl = resolver.dnsbl_check(hop.from_ip)
-            ptr = resolved.ptr
-            has_reverse = resolved.has_reverse
-            # Le detecteur ne voit que la resolution de l'IP d'origine.
-            resolved_hops.append(resolved)
-            # Une IP privee n'a pas de geo, mais son nom d'hote porte souvent un
-            # domaine public : on le geolocalise, a titre indicatif.
-            if resolved.is_private and hop.from_host:
-                domain_geo = _geo_from_domain(hop.from_host, resolver)
-                if domain_geo:
-                    resolved.country = domain_geo.country
-                    resolved.country_code = domain_geo.country_code
-        else:
-            # Aucune IP dans l'en-tete : le detecteur ne dispose de rien.
-            resolved_hops.append(ResolvedIP(ip="", ip_version=0))
-            resolved = ResolvedIP(ip="", ip_version=0)
-            # On geolocalise le nom d'hote via DNS direct, a titre indicatif.
-            if hop.from_host:
-                derived = resolver.forward_lookup(hop.from_host)
-                if derived:
-                    resolved = resolver.resolve(derived)
-                    resolved_ip = derived
-
-        delay = None
-        if hop.timestamp is not None and previous_timestamp is not None:
-            delay = int((hop.timestamp - previous_timestamp).total_seconds())
-        if hop.timestamp is not None:
-            previous_timestamp = hop.timestamp
-
-        hops.append(
-            HopInfo(
-                hop_index=hop.index,
-                ip=hop.from_ip,
-                from_host=hop.from_host,
-                resolved_ip=resolved_ip,
-                ip_version=resolved.ip_version,
-                ptr=ptr,
-                has_reverse=has_reverse,
-                country=resolved.country,
-                country_code=resolved.country_code,
-                city=resolved.city,
-                org=resolved.org,
-                timestamp=hop.timestamp,
-                delay_seconds=delay,
-                is_private=resolved.is_private if hop.from_ip else False,
-                dnsbl=dnsbl,
-            )
-        )
-
-    from_domain = _domain_of(parsed.from_header)
-    domain_created, domain_updated, domain_registrar = (
-        resolver.domain_dates(from_domain) if from_domain else (None, None, None)
-    )
-
-    detection = detect(parsed, resolved=resolved_hops, domain_created=domain_created)
-
-    originating = _build_originating(parsed.originating_ip, resolver)
-
-    return AnalysisResult(
-        hops=hops,
-        auth=AuthResult(
-            spf=detection.auth.spf,
-            dkim=detection.auth.dkim,
-            dmarc=detection.auth.dmarc,
-            spf_detail=detection.auth.spf_detail,
-            dkim_domain=detection.auth.dkim_domain,
-        ),
-        filter_verdict=FilterVerdict(
-            source=parsed.filter_verdict.source,
-            is_spam=parsed.filter_verdict.is_spam,
-            score=parsed.filter_verdict.score,
-            details=parsed.filter_verdict.details,
-        ),
-        anomalies=[
-            AnomalyItem(type=a.type, severity=a.severity, description=a.description)
-            for a in detection.anomalies
-        ],
-        verdict=detection.verdict,
-        from_domain=from_domain,
-        from_domain_created=domain_created,
-        from_domain_updated=domain_updated,
-        from_domain_registrar=domain_registrar,
-        to_domain=_domain_of(parsed.to_header),
-        from_address=parsed.from_header,
-        to_recipients=parsed.to_header,
-        cc_recipients=parsed.cc_header,
-        subject=parsed.subject,
-        date=parsed.date_header,
-        message_id=parsed.message_id,
-        return_path=parsed.return_path,
-        is_bulk=parsed.bulk.is_bulk,
-        bulk_esp=parsed.bulk.esp,
-        bulk_unsubscribe=parsed.bulk.unsubscribe,
-        originating=originating,
-        truncated=parsed.truncated,
-        raw_size_bytes=parsed.raw_size_bytes,
-        analyzed_size_bytes=parsed.analyzed_size_bytes,
-        geoip_warning=resolver.geoip_warning,
-    )
-
-
-def _domain_of(address_header: str | None) -> str | None:
-    """Extrait le domaine d'un en-tete d'adresse (From, To)."""
-
-    if not address_header:
-        return None
-    _, email_address = parseaddr(address_header)
-    if "@" not in email_address:
-        return None
-    return email_address.rsplit("@", 1)[1].lower()
-
-
-def _geo_from_domain(host: str, resolver: Resolver) -> ResolvedIP | None:
-    """Geolocalise le domaine enregistrable d'un nom d'hote, a titre indicatif.
-
-    Utile pour un saut en IP privee : le domaine public (par exemple proxad.net)
-    revele le pays de l'operateur, faute de mieux.
-    """
-
-    labels = host.strip(".").split(".")
-    if len(labels) < 2:
-        return None
-    domain = ".".join(labels[-2:])
-    ip = resolver.forward_lookup(domain)
-    if not ip:
-        return None
-    resolved = resolver.resolve(ip)
-    if resolved.is_private or not resolved.country:
-        return None
-    return resolved
-
-
-def _build_originating(ip: str | None, resolver: Resolver) -> HopInfo | None:
-    """Construit le noeud du poste expediteur, meme pour une IP privee."""
-
-    if not ip:
-        return None
-    resolved = resolver.resolve(ip)
-    return HopInfo(
-        hop_index=-1,
-        ip=ip,
-        from_host=None,
-        resolved_ip=None,
-        ip_version=resolved.ip_version,
-        ptr=resolved.ptr,
-        has_reverse=resolved.has_reverse,
-        country=resolved.country,
-        country_code=resolved.country_code,
-        city=resolved.city,
-        org=resolved.org,
-        timestamp=None,
-        delay_seconds=None,
-        is_private=resolved.is_private,
-        dnsbl=resolver.dnsbl_check(ip),
-    )
-
-
-# Sert l'interface statique a la racine. Monte en dernier pour que /health et
-# /analyze, definis plus haut, restent prioritaires.
+# Sert l'interface statique à la racine. Montée en dernier pour que /health et
+# /analyze, définis plus haut, restent prioritaires.
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
