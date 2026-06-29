@@ -123,6 +123,44 @@ def test_encoded_subject_is_decoded() -> None:
     assert result.subject == "École"
 
 
+def test_originating_ip_extracted() -> None:
+    raw = "From: a@b.com\nX-Originating-IP: [192.168.1.50]\nSubject: t"
+    result = parse_email(raw)
+
+    assert result.originating_ip == "192.168.1.50"
+
+
+def test_originating_ip_fallback_header() -> None:
+    raw = "From: a@b.com\nX-Sender-IP: 81.2.69.142\nSubject: t"
+    result = parse_email(raw)
+
+    assert result.originating_ip == "81.2.69.142"
+
+
+def test_return_path_extracted() -> None:
+    raw = "From: a@b.fr\nReturn-Path: <bounce@b.fr>\nSubject: t"
+    result = parse_email(raw)
+
+    assert result.return_path == "<bounce@b.fr>"
+
+
+def test_bulk_newsletter_detected() -> None:
+    raw = "\n".join(
+        [
+            "From: a@b.fr",
+            "Subject: news",
+            "List-Id: ma liste <list.b.fr>",
+            "List-Unsubscribe: <mailto:unsub@b.fr>,<https://b.fr/unsub>",
+            "X-Mailer: Sendinblue",
+        ]
+    )
+    result = parse_email(raw)
+
+    assert result.bulk.is_bulk is True
+    assert result.bulk.esp == "Sendinblue"
+    assert result.bulk.unsubscribe == "https://b.fr/unsub"
+
+
 def test_body_is_truncated_to_preview() -> None:
     headers = "Subject: with body\nFrom: a@b.com"
     body = "x" * 5000

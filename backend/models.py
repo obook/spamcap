@@ -75,6 +75,8 @@ class AnalysisResult(BaseModel):
     anomalies: list[AnomalyItem]
     verdict: str
     from_domain: str | None
+    from_domain_created: str | None
+    from_domain_updated: str | None
     to_domain: str | None
     from_address: str | None
     to_recipients: str | None
@@ -82,6 +84,11 @@ class AnalysisResult(BaseModel):
     subject: str | None
     date: str | None
     message_id: str | None
+    return_path: str | None
+    is_bulk: bool
+    bulk_esp: str | None
+    bulk_unsubscribe: str | None
+    originating: HopInfo | None
     truncated: bool
     raw_size_bytes: int
     analyzed_size_bytes: int

@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from email.utils import parseaddr
 
 from backend.parser import ParsedEmail
@@ -32,6 +33,10 @@ from backend.resolver import ResolvedIP, is_private_ip
 
 # Au-delà de cet écart entre deux sauts consécutifs, le délai paraît anormal.
 MAX_PLAUSIBLE_GAP_SECONDS = 3600
+
+# En deçà de cet age, le domaine expéditeur est jugé très récent, indice
+# classique d'hameçonnage.
+RECENT_DOMAIN_DAYS = 30
 
 VERDICT_LEGITIMATE = "LÉGITIME"
 VERDICT_SUSPECT = "SUSPECT"
@@ -107,6 +112,7 @@ def detect(
     parsed: ParsedEmail,
     resolved: list[ResolvedIP] | None = None,
     mx_resolver: MxResolver | None = None,
+    domain_created: str | None = None,
 ) -> DetectionResult:
     """Exécute toutes les vérifications et renvoie les anomalies et un verdict global.
 
@@ -123,6 +129,7 @@ def detect(
     anomalies.extend(_check_filter(parsed))
     anomalies.extend(_check_display_name(parsed))
     anomalies.extend(_check_lookalike_domain(parsed))
+    anomalies.extend(_check_recent_domain(domain_created))
     anomalies.extend(_check_dmarc_alignment(parsed, auth))
     anomalies.extend(_check_reply_to(parsed))
     anomalies.extend(_check_timestamps(parsed))
@@ -346,8 +353,46 @@ def _check_dmarc_alignment(parsed: ParsedEmail, auth: AuthResult) -> list[Anomal
     return []
 
 
+def _check_recent_domain(domain_created: str | None) -> list[Anomaly]:
+    """Signale un domaine expéditeur créé très récemment."""
+
+    created = _parse_iso(domain_created)
+    if created is None:
+        return []
+
+    age_days = (datetime.now(timezone.utc) - created).days
+    if 0 <= age_days < RECENT_DOMAIN_DAYS:
+        return [
+            Anomaly(
+                "recent_domain",
+                SEVERITY_MINOR,
+                f"Domaine expéditeur créé il y a {age_days} jours, possible hameçonnage.",
+            )
+        ]
+    return []
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed_date = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed_date.tzinfo is None:
+        return parsed_date.replace(tzinfo=timezone.utc)
+    return parsed_date
+
+
 def _check_reply_to(parsed: ParsedEmail) -> list[Anomaly]:
-    """Signale une adresse de réponse sur un domaine autre que l'expéditeur."""
+    """Signale une adresse de réponse sur un domaine autre que l'expéditeur.
+
+    Ignoré sur un courriel de masse : une infolettre utilise légitimement une
+    adresse de réponse d'un autre domaine.
+    """
+
+    if parsed.bulk.is_bulk:
+        return []
 
     reply_domain = _domain_of(parsed.reply_to)
     from_domain = _domain_of(parsed.from_header)

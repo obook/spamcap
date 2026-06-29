@@ -63,6 +63,24 @@ def test_spamassassin_clean_message() -> None:
     assert detect(parsed).verdict == VERDICT_LEGITIMATE
 
 
+def test_proxad_ham_is_clean() -> None:
+    raw = "From: a@b.fr\nSubject: t\nX-ProXaD-SC: state=HAM:CommercialEmailGeneric score=17"
+    parsed = parse_email(raw)
+
+    assert parsed.filter_verdict.source == "Proxad/Free"
+    assert parsed.filter_verdict.is_spam is False
+    assert parsed.filter_verdict.score == "score 17"
+    assert detect(parsed).verdict == VERDICT_LEGITIMATE
+
+
+def test_proxad_spam_is_suspect() -> None:
+    raw = "From: a@b.fr\nSubject: t\nX-ProXaD-SC: state=SPAM:Phishing score=99"
+    parsed = parse_email(raw)
+
+    assert parsed.filter_verdict.is_spam is True
+    assert detect(parsed).verdict == VERDICT_SUSPECT
+
+
 def test_no_filter_headers() -> None:
     parsed = parse_email("From: a@b.com\nSubject: rien")
 

@@ -88,6 +88,16 @@ class FilterVerdict:
 
 
 @dataclass
+class BulkInfo:
+    """Indices de courriel de masse (infolettre, liste de diffusion)."""
+
+    is_bulk: bool = False
+    list_id: str | None = None
+    unsubscribe: str | None = None
+    esp: str | None = None
+
+
+@dataclass
 class ParsedEmail:
     """Résultat structuré de l'analyse de l'entrée brute."""
 
@@ -96,13 +106,16 @@ class ParsedEmail:
     to_header: str | None = None
     cc_header: str | None = None
     reply_to: str | None = None
+    return_path: str | None = None
     subject: str | None = None
     date_header: str | None = None
     message_id: str | None = None
+    originating_ip: str | None = None
     authentication_results: str | None = None
     received_spf: str | None = None
     dkim_signatures: list[str] = field(default_factory=list)
     filter_verdict: FilterVerdict = field(default_factory=FilterVerdict)
+    bulk: BulkInfo = field(default_factory=BulkInfo)
     body_preview: str = ""
     truncated: bool = False
     raw_size_bytes: int = 0
@@ -181,9 +194,12 @@ def parse_email(raw: str) -> ParsedEmail:
         to_header=_decode(message.get("To")),
         cc_header=_decode(message.get("Cc")),
         reply_to=_decode(message.get("Reply-To")),
+        return_path=_decode(message.get("Return-Path")),
         subject=_decode(message.get("Subject")),
         date_header=_decode(message.get("Date")),
         message_id=_decode(message.get("Message-ID")),
+        originating_ip=_extract_originating(message),
+        bulk=_extract_bulk(message),
         authentication_results=_join(message.get_all("Authentication-Results")),
         received_spf=_join(message.get_all("Received-SPF")),
         dkim_signatures=[_collapse(v) for v in message.get_all("DKIM-Signature", [])],
@@ -309,6 +325,63 @@ def _collapse(value: str) -> str:
     return " ".join(value.split())
 
 
+def _extract_originating(message: Message) -> str | None:
+    """Extrait l'IP du poste expéditeur depuis les en-têtes clients.
+
+    Présente surtout quand le courriel part d'un webmail ou d'un script. Une IP
+    privée révèle un poste interne (intranet) de l'expéditeur.
+    """
+
+    for header in ("X-Originating-IP", "X-Sender-IP", "X-Source-IP", "X-Client-IP"):
+        value = message.get(header)
+        if value:
+            ip = _first_ip(value)
+            if ip:
+                return ip
+    return None
+
+
+def _extract_bulk(message: Message) -> BulkInfo:
+    """Détecte un courriel de masse (infolettre) et sa plateforme d'envoi."""
+
+    list_id = _collapse(message.get("List-Id") or "") or None
+    list_unsubscribe = message.get("List-Unsubscribe")
+    is_bulk = bool(list_id or list_unsubscribe)
+
+    return BulkInfo(
+        is_bulk=is_bulk,
+        list_id=list_id,
+        unsubscribe=_first_unsubscribe(list_unsubscribe),
+        esp=_detect_esp(message),
+    )
+
+
+def _detect_esp(message: Message) -> str | None:
+    """Identifie la plateforme d'envoi (X-Mailer, sinon suffixe du Feedback-ID)."""
+
+    mailer = message.get("X-Mailer")
+    if mailer:
+        return _collapse(mailer)
+    feedback = message.get("Feedback-ID")
+    if feedback and ":" in feedback:
+        return feedback.rsplit(":", 1)[-1].strip() or None
+    return None
+
+
+def _first_unsubscribe(value: str | None) -> str | None:
+    """Extrait un lien de désabonnement (URL ou mailto) de List-Unsubscribe."""
+
+    if not value:
+        return None
+    url = re.search(r"<(https?://[^>]+)>", value)
+    if url:
+        return url.group(1)
+    mailto = re.search(r"<(mailto:[^>]+)>", value)
+    if mailto:
+        return mailto.group(1)
+    return None
+
+
 def _detect_filter(message: Message) -> FilterVerdict:
     """Détecte le fournisseur de filtrage et normalise son verdict.
 
@@ -317,7 +390,7 @@ def _detect_filter(message: Message) -> FilterVerdict:
     plus et à l'ajouter à cette liste.
     """
 
-    for detect_one in (_microsoft_filter, _spamassassin_filter):
+    for detect_one in (_microsoft_filter, _spamassassin_filter, _proxad_filter):
         verdict = detect_one(message)
         if verdict is not None:
             return verdict
@@ -406,6 +479,38 @@ def _spamassassin_filter(message: Message) -> FilterVerdict | None:
         details.append(score)
 
     return FilterVerdict(source="SpamAssassin", is_spam=is_spam, score=score, details=details)
+
+
+def _proxad_filter(message: Message) -> FilterVerdict | None:
+    """Normalise le verdict du filtre de Free / Proxad (`X-ProXaD-SC`).
+
+    Format typique : ``state=HAM:CommercialEmailGeneric score=17``.
+    """
+
+    value = _collapse(message.get("X-ProXaD-SC") or "")
+    if not value:
+        return None
+
+    state = _group(r"state=([A-Za-z]+)", value)
+    category = _group(r"state=[A-Za-z]+:(\S+)", value)
+    score = _group(r"score=(-?\d+)", value)
+
+    is_spam: bool | None = None
+    if state:
+        is_spam = state.upper() == "SPAM"
+
+    details: list[str] = []
+    if state:
+        details.append(f"{state}:{category}" if category else state)
+    if score:
+        details.append(f"score {score}")
+
+    return FilterVerdict(
+        source="Proxad/Free",
+        is_spam=is_spam,
+        score=f"score {score}" if score else None,
+        details=details,
+    )
 
 
 def _group(pattern: str, text: str) -> str | None:

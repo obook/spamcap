@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from backend.detector import (
     VERDICT_DOUBTFUL,
     VERDICT_LEGITIMATE,
@@ -58,6 +60,35 @@ def test_reply_to_mismatch_is_flagged() -> None:
     result = detect(parse_email(raw))
 
     assert "replyto_mismatch" in types_of(result)
+
+
+def test_recent_domain_is_flagged() -> None:
+    recent = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    result = detect(parse_email("From: a@nouveau.fr\nSubject: t"), domain_created=recent)
+
+    assert "recent_domain" in types_of(result)
+    assert result.verdict == VERDICT_SUSPECT
+
+
+def test_old_domain_is_not_flagged() -> None:
+    old = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+    result = detect(parse_email("From: a@etabli.fr\nSubject: t"), domain_created=old)
+
+    assert "recent_domain" not in types_of(result)
+
+
+def test_bulk_suppresses_replyto_mismatch() -> None:
+    raw = "\n".join(
+        [
+            "From: News <news@marque.fr>",
+            "Reply-To: contact@autre.fr",
+            "List-Unsubscribe: <mailto:unsub@marque.fr>",
+            "Subject: t",
+        ]
+    )
+    result = detect(parse_email(raw))
+
+    assert "replyto_mismatch" not in types_of(result)
 
 
 def test_aligned_message_has_no_phishing_flags() -> None:

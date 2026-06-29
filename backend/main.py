@@ -185,7 +185,14 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
             )
         )
 
-    detection = detect(parsed, resolved=resolved_hops)
+    from_domain = _domain_of(parsed.from_header)
+    domain_created, domain_updated = (
+        resolver.domain_dates(from_domain) if from_domain else (None, None)
+    )
+
+    detection = detect(parsed, resolved=resolved_hops, domain_created=domain_created)
+
+    originating = _build_originating(parsed.originating_ip, resolver)
 
     return AnalysisResult(
         hops=hops,
@@ -207,7 +214,9 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
             for a in detection.anomalies
         ],
         verdict=detection.verdict,
-        from_domain=_domain_of(parsed.from_header),
+        from_domain=from_domain,
+        from_domain_created=domain_created,
+        from_domain_updated=domain_updated,
         to_domain=_domain_of(parsed.to_header),
         from_address=parsed.from_header,
         to_recipients=parsed.to_header,
@@ -215,6 +224,11 @@ def build_analysis(raw: str, resolver: Resolver) -> AnalysisResult:
         subject=parsed.subject,
         date=parsed.date_header,
         message_id=parsed.message_id,
+        return_path=parsed.return_path,
+        is_bulk=parsed.bulk.is_bulk,
+        bulk_esp=parsed.bulk.esp,
+        bulk_unsubscribe=parsed.bulk.unsubscribe,
+        originating=originating,
         truncated=parsed.truncated,
         raw_size_bytes=parsed.raw_size_bytes,
         analyzed_size_bytes=parsed.analyzed_size_bytes,
@@ -231,6 +245,31 @@ def _domain_of(address_header: str | None) -> str | None:
     if "@" not in email_address:
         return None
     return email_address.rsplit("@", 1)[1].lower()
+
+
+def _build_originating(ip: str | None, resolver: Resolver) -> HopInfo | None:
+    """Construit le noeud du poste expediteur, meme pour une IP privee."""
+
+    if not ip:
+        return None
+    resolved = resolver.resolve(ip)
+    return HopInfo(
+        hop_index=-1,
+        ip=ip,
+        from_host=None,
+        resolved_ip=None,
+        ip_version=resolved.ip_version,
+        ptr=resolved.ptr,
+        has_reverse=resolved.has_reverse,
+        country=resolved.country,
+        country_code=resolved.country_code,
+        city=resolved.city,
+        org=resolved.org,
+        timestamp=None,
+        delay_seconds=None,
+        is_private=resolved.is_private,
+        dnsbl=resolver.dnsbl_check(ip),
+    )
 
 
 # Sert l'interface statique a la racine. Monte en dernier pour que /health et
