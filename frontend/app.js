@@ -92,6 +92,12 @@ function renderReport(data) {
 function renderIdentity(data) {
   identity.replaceChildren();
   addCardRow("Expéditeur", data.from_address || "inconnu");
+  if (data.from_domain) {
+    addCardRow("Domaine expéditeur", domainLabel(data));
+  }
+  if (data.return_path) {
+    addCardRow("Retour (enveloppe)", extractEmails(data.return_path));
+  }
   addCardRow("Destinataire(s)", data.to_recipients || "inconnu");
   if (data.cc_recipients) {
     addCardRow("Copie", data.cc_recipients);
@@ -102,9 +108,45 @@ function renderIdentity(data) {
   if (origin) {
     addCardRow("Origine probable", originLabel(origin));
   }
+  if (data.is_bulk) {
+    const type = data.bulk_esp
+      ? "Courriel de masse (via " + data.bulk_esp + ")"
+      : "Courriel de masse";
+    addCardRow("Type", type);
+  }
+  if (data.bulk_unsubscribe) {
+    addCardRow("Désabonnement", data.bulk_unsubscribe);
+  }
   if (data.geoip_warning) {
     addCardRow("Note", data.geoip_warning);
   }
+}
+
+function domainLabel(data) {
+  const domain = data.from_domain;
+  const parts = [];
+  if (data.from_domain_created) {
+    parts.push("créé le " + formatDay(data.from_domain_created));
+  }
+  if (data.from_domain_updated) {
+    parts.push("mis à jour le " + formatDay(data.from_domain_updated));
+  }
+  return parts.length ? domain + " (" + parts.join(", ") + ")" : domain;
+}
+
+function formatDay(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    pad(date.getUTCDate()) +
+    "/" +
+    pad(date.getUTCMonth() + 1) +
+    "/" +
+    date.getUTCFullYear()
+  );
 }
 
 function firstGeoHop(hops) {
@@ -130,17 +172,20 @@ function renderRoute(data) {
   routeEmpty.hidden = true;
 
   if (data.from_address) {
-    spine.appendChild(buildEndpoint("Expéditeur", data.from_address, "DE"));
+    spine.appendChild(buildEndpoint("FROM", data.from_address));
+  }
+  if (data.originating) {
+    spine.appendChild(buildOriginNode(data.originating));
   }
   hops.forEach((hop, index) => {
     spine.appendChild(buildHop(hop, index));
   });
   if (data.to_recipients) {
-    spine.appendChild(buildEndpoint("Destinataire", data.to_recipients, "À"));
+    spine.appendChild(buildEndpoint("TO", data.to_recipients));
   }
 }
 
-function buildEndpoint(label, header, glyph) {
+function buildEndpoint(glyph, header) {
   const item = el("li", "hop hop--endpoint");
 
   const seal = el("div", "hop__seal hop__seal--endpoint");
@@ -148,7 +193,6 @@ function buildEndpoint(label, header, glyph) {
   item.appendChild(seal);
 
   const body = el("div", "hop__body");
-  body.appendChild(el("p", "hop__endpoint-label", label));
   body.appendChild(el("div", "hop__ip", extractEmails(header)));
   item.appendChild(body);
 
@@ -178,7 +222,37 @@ function buildHop(hop, index) {
     }
   }
   item.appendChild(seal);
+  item.appendChild(buildHopBody(hop));
+  return item;
+}
 
+// Noeud du poste/serveur source declare par X-Originating-IP. Volontairement
+// neutre : l'IP peut etre un poste de travail ou un relais SMTP interne.
+function buildOriginNode(hop) {
+  const item = el("li", "hop");
+
+  const seal = el("div", "hop__seal");
+  seal.appendChild(el("span", "hop__endpoint-glyph", "ORIG"));
+  if (hop.is_private) {
+    seal.appendChild(el("span", "hop__flag", "local"));
+  } else {
+    const flag = flagEmoji(hop.country_code);
+    if (flag) {
+      seal.appendChild(el("span", "hop__flag", flag));
+    }
+  }
+  item.appendChild(seal);
+
+  const body = buildHopBody(hop);
+  body.insertBefore(
+    el("p", "hop__place", "Origine déclarée (X-Originating-IP)"),
+    body.firstChild
+  );
+  item.appendChild(body);
+  return item;
+}
+
+function buildHopBody(hop) {
   const body = el("div", "hop__body");
 
   const ipLine = el("div", "hop__ip", hop.ip || hop.from_host || "Saut sans adresse IP");
@@ -205,8 +279,12 @@ function buildHop(hop, index) {
       addHopLine(lines, "Org", hop.org);
     }
   }
-  addHopLine(lines, "Heure", formatInstant(hop.timestamp));
-  body.appendChild(lines);
+  if (hop.timestamp) {
+    addHopLine(lines, "Heure", formatInstant(hop.timestamp));
+  }
+  if (lines.childNodes.length) {
+    body.appendChild(lines);
+  }
 
   const badges = el("div", "hop__badges");
   if (hop.is_private) {
@@ -225,8 +303,7 @@ function buildHop(hop, index) {
     body.appendChild(badges);
   }
 
-  item.appendChild(body);
-  return item;
+  return body;
 }
 
 function renderAuth(auth) {
