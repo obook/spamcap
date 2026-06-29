@@ -66,6 +66,7 @@ class ResolvedIP:
     ip: str
     ip_version: int
     ptr: str | None = None
+    has_reverse: bool | None = None
     country: str | None = None
     country_code: str | None = None
     city: str | None = None
@@ -118,10 +119,12 @@ class Resolver:
             return ResolvedIP(ip=ip, ip_version=version, is_private=True)
 
         country, country_code, city = self._lookup_geo(ip)
+        ptr, has_reverse = self._lookup_ptr(ip)
         return ResolvedIP(
             ip=ip,
             ip_version=version,
-            ptr=self._lookup_ptr(ip),
+            ptr=ptr,
+            has_reverse=has_reverse,
             country=country,
             country_code=country_code,
             city=city,
@@ -156,14 +159,39 @@ class Resolver:
             )
             return None
 
-    def _lookup_ptr(self, ip: str) -> str | None:
+    def _lookup_ptr(self, ip: str) -> tuple[str | None, bool | None]:
+        """Renvoie le couple (nom PTR, has_reverse).
+
+        ``has_reverse`` vaut True si un PTR existe, False si son absence est
+        confirmée (NXDOMAIN ou aucun enregistrement), et None si la résolution a
+        échoué (délai, erreur réseau).
+        """
+
         try:
             reverse_name = dns.reversename.from_address(ip)
             answer = self._dns.resolve(reverse_name, "PTR")
-            return str(answer[0]).rstrip(".")
+            return str(answer[0]).rstrip("."), True
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+            return None, False
         except Exception:
-            # Tout échec DNS (délai, NXDOMAIN, absence de PTR) signifie "inconnu".
-            return None
+            return None, None
+
+    def forward_lookup(self, host: str) -> str | None:
+        """Résout un nom d'hote en IP (A puis AAAA), ou None.
+
+        Sert a geolocaliser un saut qui n'a pas d'IP mais porte un nom d'hote.
+        L'IP renvoyee est l'adresse actuelle du nom, pas forcement celle du
+        transit d'origine : l'appelant doit le signaler.
+        """
+
+        for record_type in ("A", "AAAA"):
+            try:
+                answer = self._dns.resolve(host, record_type)
+            except Exception:
+                continue
+            if len(answer):
+                return str(answer[0])
+        return None
 
     def _lookup_geo(
         self, ip: str

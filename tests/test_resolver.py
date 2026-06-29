@@ -50,13 +50,14 @@ def test_is_private_helper() -> None:
 
 
 def test_public_ip_uses_lookups(resolver: Resolver) -> None:
-    resolver._lookup_ptr = lambda ip: "dns.google"
+    resolver._lookup_ptr = lambda ip: ("dns.google", True)
     resolver._lookup_geo = lambda ip: ("United States", "US", "Mountain View")
     resolver._lookup_org = lambda ip: "GOOGLE (AS15169)"
 
     result = resolver.resolve("8.8.8.8")
 
     assert result.ptr == "dns.google"
+    assert result.has_reverse is True
     assert result.country == "United States"
     assert result.country_code == "US"
     assert result.city == "Mountain View"
@@ -71,7 +72,7 @@ def test_whois_result_is_cached(resolver: Resolver) -> None:
         calls["count"] += 1
         return "ACME (AS64500)"
 
-    resolver._lookup_ptr = lambda ip: None
+    resolver._lookup_ptr = lambda ip: (None, None)
     resolver._lookup_geo = lambda ip: (None, None, None)
     resolver._lookup_org = fake_lookup
 
@@ -83,13 +84,14 @@ def test_whois_result_is_cached(resolver: Resolver) -> None:
 
 def test_failed_lookups_degrade_to_none(resolver: Resolver) -> None:
     # Les helpers sous-jacents absorbent leurs erreurs et renvoient des valeurs vides.
-    resolver._lookup_ptr = lambda ip: None
+    resolver._lookup_ptr = lambda ip: (None, None)
     resolver._lookup_geo = lambda ip: (None, None, None)
     resolver._lookup_org = lambda ip: None
 
     result = resolver.resolve("8.8.8.8")
 
     assert result.ptr is None
+    assert result.has_reverse is None
     assert result.country is None
     assert result.org is None
 
@@ -108,6 +110,47 @@ def test_org_falls_back_to_network_name(resolver: Resolver, monkeypatch) -> None
     monkeypatch.setattr(resolver_module, "IPWhois", FakeIPWhois)
 
     assert resolver._lookup_org("2603:10a6:20b:61a::17") == "MSFT"
+
+
+def test_ptr_states(resolver: Resolver, monkeypatch) -> None:
+    import dns.resolver
+
+    class Answer:
+        def __getitem__(self, index: int) -> str:
+            return "mail.example.com."
+
+    monkeypatch.setattr(resolver._dns, "resolve", lambda name, rdtype: Answer())
+    assert resolver._lookup_ptr("8.8.8.8") == ("mail.example.com", True)
+
+    def raise_nxdomain(name, rdtype):
+        raise dns.resolver.NXDOMAIN
+
+    monkeypatch.setattr(resolver._dns, "resolve", raise_nxdomain)
+    assert resolver._lookup_ptr("8.8.8.8") == (None, False)
+
+    def raise_timeout(name, rdtype):
+        raise dns.resolver.LifetimeTimeout
+
+    monkeypatch.setattr(resolver._dns, "resolve", raise_timeout)
+    assert resolver._lookup_ptr("8.8.8.8") == (None, None)
+
+
+def test_forward_lookup(resolver: Resolver, monkeypatch) -> None:
+    class Answer:
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> str:
+            return "212.27.48.10"
+
+    monkeypatch.setattr(resolver._dns, "resolve", lambda host, record_type: Answer())
+    assert resolver.forward_lookup("proxad.net") == "212.27.48.10"
+
+    def raise_error(host, record_type):
+        raise RuntimeError("dns down")
+
+    monkeypatch.setattr(resolver._dns, "resolve", raise_error)
+    assert resolver.forward_lookup("proxad.net") is None
 
 
 def test_missing_geoip_database_sets_warning() -> None:
